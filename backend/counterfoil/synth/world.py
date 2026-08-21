@@ -6,7 +6,7 @@ therefore compared against the same underlying customer, the same bank, and the
 same luck.
 
 The one thing this module exposes that no real system can is
-``would_have_recovered_anyway`` — whether the money would have arrived with no
+``would_have_recovered_anyway``, whether the money would have arrived with no
 intervention at all. That is the number every recovery product quietly needs
 and none can observe in production. Having it here is the whole reason the eval
 can report incremental rather than gross recovery.

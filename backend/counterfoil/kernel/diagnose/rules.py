@@ -3,7 +3,7 @@
 Most payment failures arrive well-labelled. The provider already knows the card
 expired; asking a language model to rediscover that from prose is slower, more
 expensive, and less reliable than a lookup. This table handles those, and
-returns ``None`` for anything it cannot resolve honestly — which is the signal
+returns ``None`` for anything it cannot resolve honestly, which is the signal
 that a case genuinely needs the model.
 
 **This table is written from the provider's error taxonomy, not from the

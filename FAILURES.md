@@ -6,7 +6,7 @@ Format: what we expected, what actually happened, what it cost, what we changed.
 
 ---
 
-## 001 — The ledger would have happily recorded customer phone numbers
+## 001: The ledger would have happily recorded customer phone numbers
 
 **Date:** 2026-08-21 · **Area:** audit ledger
 
@@ -14,13 +14,13 @@ Format: what we expected, what actually happened, what it cost, what we changed.
 provider payload we keep verbatim, the more explainable the system is.
 
 **What happened:** Writing the first ledger test, the "evidence" dict for a
-failed payment naturally contained the customer's contact details — because
+failed payment naturally contained the customer's contact details, because
 that is exactly what Razorpay's payload carries and what a diagnosis rests on.
 The ledger is the one artefact designed to be published, exported and shown to
 a judge. We were one careless `payload=raw_event` away from a public repo
 containing a file full of phone numbers and email addresses.
 
-**Cost:** None yet — caught before any data existed. Would have been severe.
+**Cost:** None yet. Caught before any data existed. Would have been severe.
 
 **Fix:** The ledger now scans every payload before writing and raises
 `PiiInLedgerError` on anything shaped like a full phone number, email address,
@@ -31,12 +31,12 @@ rendering that the ledger accepts. Eight tests cover it, including nested
 payloads.
 
 **What it taught us:** the auditability requirement and the privacy requirement
-pull in opposite directions, and the resolution is not "be careful" — it is to
+pull in opposite directions, and the resolution is not "be careful". It is to
 make the unsafe thing impossible to express.
 
 ---
 
-## 002 — The naive baseline beat our agent's premise
+## 002: The naive baseline beat our agent's premise
 
 **Date:** 2026-08-21 · **Area:** eval / world model
 
@@ -57,7 +57,7 @@ correct. The model had no way to represent the actual cost of sending 694
 messages to 1,000 customers.
 
 **Cost:** None in money. Would have been fatal to the project if it had
-surfaced on 4 September instead of day 1, or — worse — if we had never run the
+surfaced on 4 September instead of day 1, or worse, if we had never run the
 naive arm and simply reported the agent's gross recovery as a win.
 
 **Fix:** Not to tune the numbers until our agent wins. That is the exact failure
