@@ -90,6 +90,57 @@ def headline(spec: BatchSpec, ledger: Ledger | None) -> None:
           f"{report.agent.llm_calls * 0.0003:.4f} USD estimated")
 
 
+def model_contribution(spec: BatchSpec) -> None:
+    """Did the model earn its place, or is it decoration?
+
+    The rules-only agent is a complete, working product: it recovers money and
+    escalates what it cannot read. The question this answers is whether adding
+    a language model on top of it recovers anything the rules could not, which
+    is a narrower and more honest claim than "we used AI".
+    """
+    from counterfoil.kernel.diagnose.llm import LLMDiagnoser
+    from counterfoil.llm import Budget, FixtureStore
+
+    store = FixtureStore(Path("llm_fixtures"), mode="replay")
+    budget = Budget(cap_usd=0.0)
+    diagnoser = LLMDiagnoser(client=None, fixtures=store, budget=budget)
+
+    rules_only = run_batch(spec)
+    with_model = run_batch(spec, diagnoser=diagnoser)
+
+    print()
+    print(RULE)
+    print("MODEL CONTRIBUTION  |  what the language model adds over rules alone")
+    print(RULE)
+
+    a, b = rules_only.agent, with_model.agent
+    print(f"{'':22s} {'incremental':>13s} {'recovered':>10s} {'escalations':>12s}")
+    print(f"{'rules only':22s} {rs(rules_only.incremental_paise(a)):>13s} "
+          f"{a.n_recovered:>10d} {_escalations(a):>12d}")
+    print(f"{'rules plus model':22s} {rs(with_model.incremental_paise(b)):>13s} "
+          f"{b.n_recovered:>10d} {_escalations(b):>12d}")
+
+    delta = with_model.incremental_paise(b) - rules_only.incremental_paise(a)
+    print()
+    print(f"the model is worth Rs {rs(delta)} on this batch")
+    print(store.stats())
+    print(budget.summary())
+    if store.hits == 0:
+        print()
+        print("No fixtures recorded yet, so the model arm degraded to escalation on")
+        print("every ambiguous case. Run tools/record_fixtures.py --confirm to record.")
+
+
+def _escalations(arm) -> int:
+    from counterfoil.domain.decision import Intervention
+
+    return sum(
+        1
+        for r in arm.per_case
+        if any(a.intervention is Intervention.ESCALATE_HUMAN for a in r.actions)
+    )
+
+
 def sensitivity(spec: BatchSpec) -> None:
     print()
     print(RULE)
@@ -125,6 +176,8 @@ def main() -> int:
     parser.add_argument("--seed", type=int, default=2026)
     parser.add_argument("--audit", action="store_true", help="write a verifiable ledger")
     parser.add_argument("--quick", action="store_true", help="skip sensitivity and seeds")
+    parser.add_argument("--model-contribution", action="store_true",
+                        help="compare rules-only against rules plus model")
     args = parser.parse_args()
 
     spec = BatchSpec(size=args.size, seed=args.seed)
@@ -145,6 +198,9 @@ def main() -> int:
         entries = sum(1 for _ in ledger.entries())
         print(f"AUDIT LEDGER  |  {entries} entries at {ledger.path}")
         print(f"  chain verification: {'INTACT' if broken is None else f'BROKEN at {broken.seq}: {broken.reason}'}")
+
+    if args.model_contribution:
+        model_contribution(spec)
 
     if not args.quick:
         sensitivity(BatchSpec(size=min(args.size, 500), seed=args.seed))
