@@ -135,6 +135,29 @@ def spontaneous_probability(case: LatentCase) -> float:
     return min(0.95, behaviour.spontaneous * segment.self_serve)
 
 
+def attempt(
+    case: LatentCase, action: TakenAction, draw_index: int, contacts_before: int
+) -> tuple[bool, float]:
+    """Play a single action and report whether it landed.
+
+    The step-wise entry point. A real recovery agent does not commit to a plan
+    of five actions up front; it tries one, sees what happened, and decides
+    again with that knowledge. The runner drives this one action at a time so
+    the audit trail records a sequence of decisions rather than a batch
+    submission, and so a stopping rule can actually stop something.
+
+    Returns (landed, probability) so callers can record the probability that
+    was faced, not just the coin flip that came back.
+    """
+    if draw_index >= MAX_DRAWS:
+        raise ValueError(
+            f"attempt {draw_index} exceeds the {MAX_DRAWS} pre-drawn outcomes; "
+            "a policy this permissive is the bug, not the draw budget"
+        )
+    p = _success_probability(case, action, contacts_before)
+    return case.draws[draw_index] < p, p
+
+
 def resolve(case: LatentCase, actions: list[TakenAction], arm: Arm) -> SimResult:
     """Play one case forward under one arm's chosen actions."""
     if len(actions) > MAX_DRAWS:
@@ -157,8 +180,8 @@ def resolve(case: LatentCase, actions: list[TakenAction], arm: Arm) -> SimResult
         if action.intervention in CONTACTING:
             contacts += 1
 
-        p = _success_probability(case, action, contacts_before)
-        if case.draws[index] < p:
+        landed, p = attempt(case, action, index, contacts_before)
+        if landed:
             closed_by = action.intervention
             attributable = not would_recover_anyway
             notes.append(
