@@ -1,0 +1,12 @@
+# Runtime
+PyYAML==6.0.3
+
+# Added as the corresponding layers land:
+#   anthropic       -- LLM diagnoser
+#   fastapi         -- API surface
+#   uvicorn         -- ASGI server
+#   httpx           -- Razorpay client
+#   SQLAlchemy      -- outcome store
+
+# Development
+pytest==8.3.4

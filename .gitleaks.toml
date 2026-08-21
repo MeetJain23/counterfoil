@@ -1,0 +1,33 @@
+# Counterfoil secret-scanning config.
+# Run locally:  gitleaks detect --config .gitleaks.toml --redact
+# Run on full history before flipping the repo public.
+title = "counterfoil"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "razorpay-key-id"
+description = "Razorpay key id (live or test)"
+regex = '''rzp_(live|test)_[A-Za-z0-9]{10,}'''
+tags = ["razorpay"]
+
+[[rules]]
+id = "razorpay-live-key-id"
+description = "Razorpay LIVE key id - must never appear anywhere"
+regex = '''rzp_live_[A-Za-z0-9]{10,}'''
+tags = ["razorpay", "critical"]
+
+[[rules]]
+id = "anthropic-api-key"
+description = "Anthropic API key"
+regex = '''sk-ant-[A-Za-z0-9\-_]{20,}'''
+tags = ["anthropic"]
+
+[allowlist]
+description = "Placeholders in documentation and examples"
+regexes = [
+  '''rzp_test_xxxxxxxxxxxxxx''',
+  '''rzp_test_FAKEKEYFORTESTS''',
+]
+paths = ['''\.env\.example$''', '''\.gitleaks\.toml$''']

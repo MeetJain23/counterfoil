@@ -1,0 +1,41 @@
+# Counterfoil policy. This file is the whole of the agent's authority.
+#
+# Nothing the model proposes runs unless a clause here permits it, and every
+# refusal below names itself in the audit ledger. Tuning recovery aggression
+# means editing this file, not the code.
+version: 1
+
+global:
+  # Below this confidence we will not spend money or contact anyone on the
+  # strength of a diagnosis. Escalating to a human is always still allowed.
+  min_confidence: 0.55
+  # Recovering Rs 12 by spending Rs 20 of gateway fees and goodwill is a loss.
+  min_recoverable_paise: 5000        # Rs 50
+  # Hard stop across the entire lifecycle of one at-risk item.
+  max_total_actions: 5
+
+retry:
+  max_attempts:
+    payments: 3
+    subscriptions: 4                 # mandates legitimately retry on salary cycles
+    receivables: 0                   # an invoice is not a thing you retry
+  min_backoff_minutes: 30
+  # When the issuer or gateway is down, retrying immediately just burns attempts.
+  bank_outage_hold_minutes: 90
+  # Insufficient funds is worth retrying, but on a human schedule, not a machine one.
+  insufficient_funds_retry_after_hours: 24
+
+contact:
+  max_per_7d: 2
+  # TRAI restricts commercial communication outside these hours. Also: nobody
+  # recovers revenue by texting a customer at 3am.
+  quiet_hours_start_ist: 21
+  quiet_hours_end_ist: 9
+  allowed_channels: [sms, email, whatsapp]
+
+receivables:
+  # A disputed invoice is a support problem, not a collections problem.
+  # Dunning a dispute is how a recoverable account becomes a lost customer.
+  block_dunning_when_disputed: true
+  reminder_min_gap_days: 3
+  escalate_after_days_overdue: 45
