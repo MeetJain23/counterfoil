@@ -170,3 +170,59 @@ def test_replay_mode_builds_no_client_even_with_a_key(monkeypatch):
 
     monkeypatch.setenv("GEMINI_API_KEY", "AIza-fake")
     assert build_client(load_settings()) is None
+
+
+# --------------------------------------------------------------------- #
+# .env value parsing (see FAILURES.md 003)                              #
+# --------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize(
+    "line,expected",
+    [
+        ("K=replay          # replay | record | live", "replay"),
+        ("K=replay\t# tab before the comment", "replay"),
+        ("K=value", "value"),
+        ("K=", ""),
+        ("K=  spaced  ", "spaced"),
+        # A hash with no whitespace before it belongs to the value.
+        ("K=secret#value", "secret#value"),
+        ("K=AIzaSy#notacomment", "AIzaSy#notacomment"),
+        # Quoted values are taken whole, comment characters and all.
+        ('K="pa ss # word"', "pa ss # word"),
+        ("K='single # quoted'", "single # quoted"),
+        ('K="trailing" # and a comment', "trailing"),
+        # Values containing '=' survive; only the first '=' splits.
+        ("K=a=b=c", "a=b=c"),
+    ],
+)
+def test_dotenv_value_parsing(tmp_path, line, expected):
+    from counterfoil.config import load_dotenv
+
+    env = tmp_path / ".env"
+    env.write_text(line + "\n", encoding="utf-8")
+    load_dotenv(env, override=True)
+    assert os.environ["K"] == expected
+
+
+def test_the_shipped_example_file_actually_loads(tmp_path, monkeypatch):
+    """.env.example is what everyone copies, so it has to parse cleanly.
+
+    This is the exact failure in FAILURES.md 003: the example carried inline
+    comments on value lines and the loader took them as part of the value.
+    """
+    from pathlib import Path
+
+    from counterfoil.config import load_dotenv
+
+    example = Path(__file__).resolve().parents[2] / ".env.example"
+    assert example.is_file()
+
+    monkeypatch.setenv("RAZORPAY_KEY_ID", TEST_KEY)   # the example ships a placeholder
+    load_dotenv(example, override=True)
+    monkeypatch.setenv("RAZORPAY_KEY_ID", TEST_KEY)
+
+    settings = load_settings()
+    assert settings.llm_mode == "replay"
+    assert settings.llm_provider in {"gemini", "anthropic"}
+    assert settings.spend_cap_usd > 0

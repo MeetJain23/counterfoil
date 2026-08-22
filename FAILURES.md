@@ -83,3 +83,48 @@ anyone reading the commit history. Instead:
 be informative. A control arm proves the agent does something; a *strong* naive
 arm is what proves the agent does something worth doing. The uncomfortable
 result on day 1 was the most useful output the system has produced so far.
+
+---
+
+## 003: The .env file I shipped could not be read by the loader I shipped
+
+**Date:** 2026-08-21 · **Area:** configuration
+
+**Expected:** Copy `.env.example` to `.env`, paste in an API key, run
+`tools/check_llm.py`. That is the first thing anyone cloning this repo does,
+including a judge.
+
+**What happened:** It crashed immediately:
+
+```
+UnsafeConfigError: COUNTERFOIL_LLM_MODE must be replay|record|live,
+got 'replay          # replay | record | live'
+```
+
+The `.env` loader was written to take values literally, deliberately, so that
+nothing in the file could ever be expanded or executed. I took that too far: it
+did not strip trailing comments either. And `.env.example`, which is the file
+everybody copies, had a helpful inline comment on that exact line. The two
+pieces I wrote in the same commit were incompatible with each other.
+
+**Cost:** A few minutes. It surfaced on the very first real use, because the
+config guard refused to boot rather than accepting a nonsense value and failing
+somewhere less obvious later.
+
+**Fix:** Values now end at the first whitespace-preceded `#`, which is the
+convention every `.env` file in the wild is written against. A quoted value is
+still taken whole, so a secret containing a `#` survives intact, and
+`secret#value` unquoted keeps its hash because there is no whitespace before
+it. Still no expansion and no substitution: the result is always a plain
+string. Eleven parametrised cases cover the boundaries.
+
+The example file also had its inline comments moved onto their own lines, so it
+does not depend on the loader being lenient, and a test now loads
+`.env.example` itself and asserts the settings it produces are valid. The
+shipped example being parseable is not something to verify by hand each time.
+
+**What it taught us:** the config guard earned its place. A validator that
+refuses a malformed value at boot turned a silent misconfiguration into a
+one-line error message naming the exact field. The bug was mine; the thing that
+caught it was also mine, written on day 1 before there was anything to
+misconfigure.

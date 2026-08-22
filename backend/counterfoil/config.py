@@ -33,14 +33,37 @@ def load_dotenv(path: str | Path = ".env", *, override: bool = False) -> int:
         line = line.strip()
         if not line or line.startswith("#") or "=" not in line:
             continue
-        key, _, value = line.partition("=")
+        key, _, raw = line.partition("=")
         key = key.strip()
-        value = value.strip().strip('"').strip("'")
         if not key or (not override and key in os.environ):
             continue
-        os.environ[key] = value
+        os.environ[key] = _parse_value(raw)
         loaded += 1
     return loaded
+
+
+def _parse_value(raw: str) -> str:
+    """Take a value literally, minus any trailing comment.
+
+    A quoted value is taken whole, so a secret containing a '#' survives. An
+    unquoted value ends at the first whitespace-preceded '#', which is the
+    convention every .env file in the wild is written against. Nothing is
+    expanded or substituted: the result is always a plain string.
+    """
+    raw = raw.strip()
+    if not raw:
+        return ""
+
+    if raw[0] in {'"', "'"}:
+        quote = raw[0]
+        closing = raw.find(quote, 1)
+        return raw[1:closing] if closing != -1 else raw[1:]
+
+    # 'secret#value' keeps its hash; 'secret  # note' does not.
+    for i in range(1, len(raw)):
+        if raw[i] == "#" and raw[i - 1].isspace():
+            return raw[:i].strip()
+    return raw
 
 
 def _env(name: str, default: str = "") -> str:
