@@ -266,3 +266,53 @@ what made those tests fragile.
 indistinguishable from the inside. The system reported no errors, lost no data
 and produced no bad output; it was simply going to take two hours to do seven
 minutes of work, and nothing but a wall clock would have said so.
+
+---
+
+## 007: One DNS blip cost 36 questions, because network errors were not retried
+
+**Date:** 2026-08-22 · **Area:** model provider
+
+**Expected:** With adaptive pacing in place (006), the recorder finishes the
+remaining 36 fixtures unattended.
+
+**What happened:** It finished, having recorded nothing:
+
+```
+[50/56] withheld: model unavailable: could not reach Gemini: [Errno 11001] getaddrinfo failed
+...
+recorded : 20   withheld : 36
+```
+
+The connection dropped partway through. By the time it came back the run was
+over. A direct DNS lookup a minute later resolved instantly, so the outage was
+seconds long and the batch was already past every remaining question.
+
+The retry logic covered HTTP status codes and nothing else. A dropped
+connection is the most transient failure there is and the most obviously worth
+retrying, and it was the one case that raised immediately. That gap was not
+visible while the only failures being exercised were 429s.
+
+**Cost:** One 25 minute run producing zero new fixtures. Nothing lost, since
+recorded answers persist and re-running resumes.
+
+**Fix:** `URLError` and `TimeoutError` now retry on the same backoff as a 5xx.
+They do not widen the pacing interval, because pacing answers rate limits and a
+dropped connection is not one. Four tests cover it, including a transport that
+fails twice and then succeeds.
+
+Then the suite went from 5 seconds to 128, for the second time, because a test
+built a client with the real `time.sleep` and the new retry path slept through
+a genuine 8, 16, 32, 64 second chain. Getting this wrong twice made it a
+pattern rather than an accident, so it is now structural:
+
+- `sleep` defaults to a module-level `_sleep` wrapper rather than `time.sleep`
+  directly. A dataclass default binds at class-definition time, so the original
+  form captured the real function and ignored any later patch.
+- An autouse fixture in `conftest.py` replaces `time.sleep` with something that
+  raises, naming the fix in the message. A test that waits now fails instead of
+  merely being slow.
+
+**What it taught us:** the second occurrence is the useful one. The first looks
+like a mistake and invites a local fix; the same mistake twice says the design
+permits it, and that is worth a guard rather than another patch.

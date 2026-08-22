@@ -62,6 +62,17 @@ def retry_after_seconds(body: str) -> float | None:
     return float(match.group(1)) if match else None
 
 
+def _sleep(seconds: float) -> None:
+    """Indirection so a test can patch ``time.sleep`` and be obeyed.
+
+    A dataclass default binds at class-definition time, so ``sleep: Callable =
+    time.sleep`` would capture the real function and quietly ignore any later
+    patch. Twice that turned a new retry path into a suite that slept through
+    two minutes of genuine backoff.
+    """
+    time.sleep(seconds)
+
+
 #: The free tier bills nothing, so cost is reported as zero rather than
 #: estimated. The budget meter still counts calls, which is what the rate limit
 #: actually cares about.
@@ -131,7 +142,7 @@ class GeminiClient:
     min_interval_seconds: float = 0.0
     max_retries: int = 4
     #: Injected so tests do not actually wait.
-    sleep: Callable[[float], None] = time.sleep
+    sleep: Callable[[float], None] = _sleep
     clock: Callable[[], float] = time.monotonic
     #: Called before each retry, for progress output.
     on_retry: Callable[[int, float, str], None] | None = None
@@ -184,10 +195,19 @@ class GeminiClient:
                     self.sleep(delay)
                     continue
                 raise LLMError(f"{exc.code} from Gemini: {detail[:300]}") from exc
-            except urllib.error.URLError as exc:
-                raise LLMError(f"could not reach Gemini: {exc.reason}") from exc
-            except TimeoutError as exc:
-                raise LLMError(f"Gemini timed out after {self.timeout}s") from exc
+            except (urllib.error.URLError, TimeoutError) as exc:
+                # A dropped connection or a DNS blip is the most transient
+                # failure there is, and the first version of this did not retry
+                # it at all: one hiccup mid-batch cost 36 questions.
+                self._last_call_at = self.clock()
+                reason = getattr(exc, "reason", exc)
+                if attempt < self.max_retries:
+                    delay = BACKOFF_BASE * (2**attempt)
+                    if self.on_retry:
+                        self.on_retry(attempt + 1, delay, "network")
+                    self.sleep(delay)
+                    continue
+                raise LLMError(f"could not reach Gemini: {reason}") from exc
 
         raise LLMError(f"Gemini still rate limiting after {self.max_retries} retries")
 

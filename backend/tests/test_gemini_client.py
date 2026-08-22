@@ -151,12 +151,54 @@ def test_non_json_content_raises_llm_error():
         GeminiClient(api_key="k", transport=canned(payload)).ask(ASK)
 
 
-def test_network_failures_become_llm_errors():
+def test_network_failures_become_llm_errors_after_retrying():
     def dead(url, body, timeout):
         raise urllib.error.URLError("name resolution failed")
 
+    client, _, retries = build(transport=dead, max_retries=2)
     with pytest.raises(LLMError, match="could not reach"):
-        GeminiClient(api_key="k", transport=dead).ask(ASK)
+        client.ask(ASK)
+    assert len(retries) == 2
+
+
+def test_a_transient_network_blip_is_survived():
+    """A DNS hiccup mid-batch used to cost every remaining question."""
+    state = {"n": 0}
+
+    def flaky_network(url, body, timeout):
+        state["n"] += 1
+        if state["n"] <= 2:
+            raise urllib.error.URLError("getaddrinfo failed")
+        return ok_payload()
+
+    client, _, retries = build(transport=flaky_network)
+    assert client.ask(ASK).data == ANSWER
+    assert [code for _, _, code in retries] == ["network", "network"]
+
+
+def test_a_timeout_is_retried_too():
+    state = {"n": 0}
+
+    def slow(url, body, timeout):
+        state["n"] += 1
+        if state["n"] == 1:
+            raise TimeoutError("read timed out")
+        return ok_payload()
+
+    client, _, retries = build(transport=slow)
+    assert client.ask(ASK).data == ANSWER
+    assert len(retries) == 1
+
+
+def test_a_network_failure_does_not_widen_pacing():
+    """Pacing answers rate limits. A dropped connection is not one."""
+    def dead(url, body, timeout):
+        raise urllib.error.URLError("offline")
+
+    client, _, _ = build(transport=dead, min_interval_seconds=4.0, max_retries=1)
+    with pytest.raises(LLMError):
+        client.ask(ASK)
+    assert client.min_interval_seconds == 4.0
 
 
 def test_http_errors_become_llm_errors():
@@ -305,7 +347,7 @@ def test_the_diagnoser_degrades_on_a_gemini_failure_like_any_other(tmp_path):
         raise urllib.error.URLError("offline")
 
     dx = LLMDiagnoser(
-        client=GeminiClient(api_key="k", transport=dead),
+        client=GeminiClient(api_key="k", transport=dead, max_retries=0),
         fixtures=FixtureStore(tmp_path / "fx", mode="live"),
         budget=Budget(cap_usd=1.0),
     )
