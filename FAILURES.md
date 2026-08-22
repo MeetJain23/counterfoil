@@ -221,3 +221,48 @@ to return zero. The sentinel is `None` now.
 **What it taught us:** the degradation path built for "the model is down"
 covered "the model is rate limiting" for free, without a line written for it.
 Designing one honest failure mode bought a second one nobody had thought about.
+
+---
+
+## 006: Guessing the rate limit cost two hours
+
+**Date:** 2026-08-22 · **Area:** model provider
+
+**Expected:** After adding retry and pacing (see 005), recording 56 fixtures at
+8 requests per minute should take about seven minutes.
+
+**What happened:** Forty-five minutes in, 20 of 56 recorded and the process
+still running. A direct probe against the same API succeeded instantly, so it
+was not a quota exhaustion, an outage, or a hang.
+
+The pacing figure was a guess, and it was too fast for this model. Nearly every
+call hit a 429 and then paid a full retry chain of 8, 16, 32 and 64 seconds
+before the next question even began. Two minutes per question, 56 questions, on
+its way to nearly two hours.
+
+The retry logic worked exactly as designed. That was the problem: retrying
+correctly at the wrong cadence is still the wrong cadence, and backing off the
+individual request does nothing about a rate that is structurally too high.
+
+**Cost:** Two wasted runs and about an hour of wall clock. No money, since the
+tier is free, and no lost work, because fixtures are written as they succeed
+and re-running resumes.
+
+**Fix:** The client now backs off the *interval*, not just the request. Each 429
+widens the gap between calls by 1.6x up to a 45 second ceiling, so a batch
+converges on the real limit within a few calls instead of paying a full retry
+chain on every one of them. The published requests-per-minute figure differs by
+model and changes without notice, so discovering it is more reliable than
+configuring it.
+
+Rewriting the tests exposed a second thing. They counted `sleep` calls to
+assert on retry behaviour, which stopped meaning anything once pacing could
+insert sleeps of its own. Retries are now counted through the `on_retry`
+callback, and the fake clock advances when the fake sleep is called, the way
+real time does. Asserting on a side effect rather than on the event itself is
+what made those tests fragile.
+
+**What it taught us:** a correct retry policy and a wrong rate are
+indistinguishable from the inside. The system reported no errors, lost no data
+and produced no bad output; it was simply going to take two hours to do seven
+minutes of work, and nothing but a wall clock would have said so.

@@ -59,7 +59,7 @@ def main() -> int:
     parser.add_argument("--confirm", action="store_true", help="actually call the API")
     parser.add_argument("--cap-usd", type=float, default=0.50)
     parser.add_argument("--model", default=None, help="overrides the .env setting")
-    parser.add_argument("--rpm", type=float, default=8.0,
+    parser.add_argument("--rpm", type=float, default=5.0,
                         help="requests per minute; the free tier is capped")
     parser.add_argument("--sizes", type=int, nargs="+", default=[1000])
     parser.add_argument("--seeds", type=int, nargs="+", default=[7, 11, 23, 42, 99, 2026])
@@ -101,7 +101,9 @@ def main() -> int:
     if hasattr(client, "min_interval_seconds"):
         client.min_interval_seconds = 60.0 / args.rpm if args.rpm > 0 else 0.0
         client.on_retry = lambda n, delay, code: print(
-            f"    rate limited ({code}), waiting {delay:.0f}s before retry {n}"
+            f"    rate limited ({code}), waiting {delay:.0f}s before retry {n}; "
+            f"pacing now {client.min_interval_seconds:.0f}s between calls",
+            flush=True,
         )
         print(f"pacing       : {args.rpm:.0f} requests/minute, "
               f"about {len(questions) * 60 / args.rpm / 60:.1f} minutes")
@@ -115,9 +117,11 @@ def main() -> int:
         result = diagnoser(event)
         if result.path.value == "llm":
             recorded += 1
+            print(f"  [{i}/{len(questions)}] {result.cause.value} "
+                  f"({result.confidence:.2f})", flush=True)
         else:
             degraded += 1
-            print(f"  [{i}/{len(questions)}] withheld: {result.rationale[:70]}")
+            print(f"  [{i}/{len(questions)}] withheld: {result.rationale[:70]}", flush=True)
         if budget.exhausted:
             print(f"\nSpend cap reached after {i} questions. Re-run to continue.")
             break

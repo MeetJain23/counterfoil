@@ -47,6 +47,11 @@ RETRYABLE_STATUS = frozenset({429, 500, 502, 503, 504})
 
 BACKOFF_BASE = 8.0
 
+#: How much wider the gap gets after each rate limit, and the ceiling it
+#: will not pass. Converging is the point; crawling is not.
+PACING_GROWTH = 1.6
+MAX_INTERVAL_SECONDS = 45.0
+
 #: A 429 body carries a RetryInfo detail saying how long to wait. Obeying it
 #: beats guessing, and guessing short is how you get rate limited for longer.
 _RETRY_DELAY = re.compile(r'"retryDelay"\s*:\s*"(\d+(?:\.\d+)?)s"')
@@ -135,6 +140,22 @@ class GeminiClient:
     #: on the one call where it matters most.
     _last_call_at: float | None = field(default=None, repr=False)
 
+    def _slow_down(self) -> None:
+        """Widen the gap after a rate limit, rather than guessing it up front.
+
+        A published requests-per-minute figure is a moving target and differs
+        per model, so the first run of a batch inevitably guesses wrong. Backing
+        off on the interval rather than only on the individual request means the
+        batch converges on the real limit within a few calls instead of paying
+        a full retry chain on every one of them.
+        """
+        if self.min_interval_seconds <= 0:
+            self.min_interval_seconds = BACKOFF_BASE
+        else:
+            self.min_interval_seconds = min(
+                MAX_INTERVAL_SECONDS, self.min_interval_seconds * PACING_GROWTH
+            )
+
     def _pace(self) -> None:
         if self.min_interval_seconds <= 0 or self._last_call_at is None:
             return
@@ -156,6 +177,8 @@ class GeminiClient:
                 detail = exc.read().decode("utf-8", "replace")
                 if exc.code in RETRYABLE_STATUS and attempt < self.max_retries:
                     delay = retry_after_seconds(detail) or BACKOFF_BASE * (2**attempt)
+                    if exc.code == 429:
+                        self._slow_down()
                     if self.on_retry:
                         self.on_retry(attempt + 1, delay, f"{exc.code}")
                     self.sleep(delay)

@@ -197,89 +197,94 @@ def flaky(fail_times, code=429, body=b""):
 
 
 def recorder():
-    slept = []
-    return slept, slept.append
+    """A fake clock where sleeping advances time, as it does in reality.
+
+    Counting raw sleeps stopped being meaningful once pacing could insert its
+    own, so retries are counted through the on_retry callback instead.
+    """
+    slept, now = [], {"t": 0.0}
+
+    def sleep(seconds):
+        slept.append(seconds)
+        now["t"] += seconds
+
+    return slept, sleep, (lambda: now["t"])
+
+
+def build(**kw):
+    slept, sleep, clock = recorder()
+    retries = []
+    client = GeminiClient(
+        api_key="k", sleep=sleep, clock=clock,
+        on_retry=lambda n, delay, code: retries.append((n, delay, code)),
+        **kw,
+    )
+    return client, slept, retries
 
 
 def test_a_rate_limit_is_retried_rather_than_surfaced():
-    slept, sleep = recorder()
-    client = GeminiClient(api_key="k", transport=flaky(2), sleep=sleep)
+    client, _, retries = build(transport=flaky(2))
     assert client.ask(ASK).data == ANSWER
-    assert len(slept) == 2
+    assert len(retries) == 2
 
 
 def test_backoff_grows_between_attempts():
-    slept, sleep = recorder()
-    GeminiClient(api_key="k", transport=flaky(3), sleep=sleep).ask(ASK)
-    assert slept == sorted(slept)
-    assert slept[-1] > slept[0]
+    client, _, retries = build(transport=flaky(3))
+    client.ask(ASK)
+    delays = [d for _, d, _ in retries]
+    assert delays == sorted(delays)
+    assert delays[-1] > delays[0]
 
 
 def test_the_providers_own_retry_delay_is_obeyed_over_our_guess():
     body = b'{"error":{"code":429},"details":[{"retryDelay":"27s"}]}'
-    slept, sleep = recorder()
-    GeminiClient(api_key="k", transport=flaky(1, body=body), sleep=sleep).ask(ASK)
-    assert slept == [27.0]
+    client, _, retries = build(transport=flaky(1, body=body))
+    client.ask(ASK)
+    assert [d for _, d, _ in retries] == [27.0]
 
 
 @pytest.mark.parametrize("code", [429, 500, 502, 503, 504])
 def test_transient_failures_are_retried(code):
-    slept, sleep = recorder()
-    client = GeminiClient(api_key="k", transport=flaky(1, code=code), sleep=sleep)
+    client, _, retries = build(transport=flaky(1, code=code))
     assert client.ask(ASK).data == ANSWER
+    assert len(retries) == 1
 
 
 @pytest.mark.parametrize("code", [400, 401, 403, 404])
 def test_permanent_failures_are_not_retried(code):
-    slept, sleep = recorder()
+    client, slept, retries = build(transport=http_error(code))
     with pytest.raises(LLMError):
-        GeminiClient(api_key="k", transport=http_error(code), sleep=sleep).ask(ASK)
+        client.ask(ASK)
+    assert retries == []
     assert slept == []
 
 
 def test_retries_give_up_eventually():
-    slept, sleep = recorder()
-    client = GeminiClient(api_key="k", transport=http_error(429), sleep=sleep, max_retries=3)
+    client, _, retries = build(transport=http_error(429), max_retries=3)
     with pytest.raises(LLMError, match="429"):
         client.ask(ASK)
-    assert len(slept) == 3
+    assert len(retries) == 3
 
 
 def test_pacing_waits_between_calls():
     """Free tier caps requests per minute, so a batch must pace itself."""
-    slept, sleep = recorder()
-    now = {"t": 0.0}
-    client = GeminiClient(
-        api_key="k",
-        transport=canned(ok_payload()),
-        sleep=sleep,
-        clock=lambda: now["t"],
-        min_interval_seconds=6.0,
-    )
+    client, slept, _ = build(transport=canned(ok_payload()), min_interval_seconds=6.0)
     client.ask(ASK)          # first call does not wait
     client.ask(ASK)          # second is immediate, so it waits the full interval
     assert slept == [6.0]
 
 
 def test_pacing_does_not_wait_when_enough_time_already_passed():
-    slept, sleep = recorder()
-    now = {"t": 0.0}
-    client = GeminiClient(
-        api_key="k",
-        transport=canned(ok_payload()),
-        sleep=sleep,
-        clock=lambda: now["t"],
-        min_interval_seconds=6.0,
-    )
+    client, slept, _ = build(transport=canned(ok_payload()), min_interval_seconds=6.0)
     client.ask(ASK)
-    now["t"] = 30.0
+    client.sleep(30.0)       # time passes for some other reason
+    slept.clear()
     client.ask(ASK)
     assert slept == []
 
 
 def test_pacing_is_off_by_default():
-    slept, sleep = recorder()
-    client = GeminiClient(api_key="k", transport=canned(ok_payload()), sleep=sleep)
+    client, slept, _ = build(transport=canned(ok_payload()))
     client.ask(ASK)
     client.ask(ASK)
     assert slept == []
@@ -412,3 +417,25 @@ def test_a_retired_model_degrades_with_the_replacement_still_readable(tmp_path):
 
     assert result.path is DiagnosisPath.DEGRADED
     assert suggested_replacement(result.rationale) == "gemini-3.6-flash"
+
+
+def test_pacing_widens_itself_after_a_rate_limit():
+    """A published RPM figure is a moving target, so the batch finds it."""
+    client, _, _ = build(transport=flaky(2), min_interval_seconds=4.0)
+    client.ask(ASK)
+    assert client.min_interval_seconds > 4.0
+
+
+def test_pacing_growth_is_capped():
+    from counterfoil.llm.gemini_client import MAX_INTERVAL_SECONDS
+
+    client, _, _ = build(transport=http_error(429), min_interval_seconds=40.0, max_retries=6)
+    with pytest.raises(LLMError):
+        client.ask(ASK)
+    assert client.min_interval_seconds <= MAX_INTERVAL_SECONDS
+
+
+def test_a_non_rate_limit_failure_does_not_widen_pacing():
+    client, _, _ = build(transport=flaky(1, code=503), min_interval_seconds=4.0)
+    client.ask(ASK)
+    assert client.min_interval_seconds == 4.0
