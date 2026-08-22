@@ -31,6 +31,7 @@ from counterfoil.domain.events import Customer, RiskEvent, RiskKind, Surface  # 
 from counterfoil.domain.money import Money  # noqa: E402
 from counterfoil.kernel.diagnose.llm import LLMDiagnoser, build_user_prompt  # noqa: E402
 from counterfoil.llm import Budget, FixtureStore, LLMError, build_client  # noqa: E402
+from counterfoil.llm.gemini_client import suggested_replacement  # noqa: E402
 
 PROBE = RiskEvent(
     event_id="evt_probe",
@@ -81,13 +82,19 @@ def main() -> int:
         except LLMError as exc:
             print(f"could not list models: {exc}", file=sys.stderr)
             return 1
-        print(f"models reachable with this key ({len(models)}):")
-        for name in models[:20]:
+        # Print all of them. Truncating this list once hid the very model the
+        # API was telling us to switch to.
+        print(f"models listed for this key ({len(models)}):")
+        for name in models:
             marker = "  <- configured" if name == settings.llm_model else ""
             print(f"    {name}{marker}")
         if settings.llm_model not in models:
             print(f"\n  WARNING: {settings.llm_model} is not in the list above.")
             print("  Set COUNTERFOIL_LLM_MODEL in .env to one that is.")
+        print()
+        print("  Being listed does not mean being callable: models can be retired")
+        print("  for new keys while still appearing here. The probe below is the")
+        print("  only thing that actually settles it.")
 
     print()
     print("probe payload:")
@@ -111,6 +118,13 @@ def main() -> int:
     if result.path.value == "degraded":
         print("\nThe call did not produce a usable classification. The message above")
         print("says why. Nothing downstream would act on this; it would go to a human.")
+
+        replacement = suggested_replacement(result.rationale)
+        if replacement and replacement != settings.llm_model:
+            print()
+            print(f"  The provider named a replacement: {replacement}")
+            print(f"  Set this in .env, then re-run:")
+            print(f"      COUNTERFOIL_LLM_MODEL={replacement}")
         return 1
 
     print("\nWorking. Run tools/record_fixtures.py to record the full set.")

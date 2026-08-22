@@ -128,3 +128,50 @@ refuses a malformed value at boot turned a silent misconfiguration into a
 one-line error message naming the exact field. The bug was mine; the thing that
 caught it was also mine, written on day 1 before there was anything to
 misconfigure.
+
+---
+
+## 004: The model we defaulted to had been retired, and our own tool hid the fix
+
+**Date:** 2026-08-21 · **Area:** model provider
+
+**Expected:** `tools/check_llm.py` was written precisely because model names
+move faster than a hard-coded default survives. It lists what the key can reach
+before running a probe, so drift is caught in setup rather than in a batch run.
+
+**What happened:** It caught the drift, then obscured the answer.
+
+The listing showed `gemini-2.5-flash` present and configured, so the "is the
+model available" check passed. The probe then failed:
+
+```
+404: This model models/gemini-2.5-flash is no longer available to new users.
+Please update your code to use models/gemini-3.6-flash
+```
+
+Two separate mistakes:
+
+1. **Being listed is not being callable.** `models.list` returns models that
+   `generateContent` will refuse for a new key. The check conflated the two, so
+   its reassuring "configured model found" line was worthless.
+2. **The output truncated at 20 of 37 models**, a limit added for tidiness, and
+   `gemini-3.6-flash` was below the cut. The tool printed the exact error naming
+   the replacement, and simultaneously hid that replacement from the list right
+   above it.
+
+**Cost:** One confusing run. The system behaved correctly throughout: the
+diagnoser degraded, nothing was retried, nothing was messaged, and the probe
+would have been escalated to a human.
+
+**Fix:** The default is now `gemini-3.6-flash`. The listing prints in full and
+carries a line saying outright that being listed does not mean being callable
+and only the probe settles it. And `suggested_replacement` parses the model name
+out of the provider's own 404 body, so the tool ends with the literal line to
+paste into `.env` rather than leaving it to be spotted in a stack trace. Four
+parametrised cases plus one end-to-end test that a retirement notice survives
+into the diagnosis rationale intact.
+
+**What it taught us:** a diagnostic tool that reports a green check next to a
+broken thing is worse than no tool, because it spends the reader's trust. The
+check was right to exist and wrong to summarise. Where it now cannot be certain,
+it says so.

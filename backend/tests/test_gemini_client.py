@@ -229,3 +229,68 @@ def test_fixtures_are_provider_agnostic(tmp_path):
         budget=Budget(cap_usd=0.0),
     )
     assert replayer(event()).cause is recorded.cause
+
+
+# --------------------------------------------------------------------- #
+# model retirement (see FAILURES.md 004)                                #
+# --------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize(
+    "message,expected",
+    [
+        (
+            'This model models/gemini-2.5-flash is no longer available to new '
+            'users. Please update your code to use models/gemini-3.6-flash for '
+            'the latest features and improvements.',
+            "gemini-3.6-flash",
+        ),
+        ("please use models/gemini-3-pro instead", "gemini-3-pro"),
+        ("404 not found", None),
+        ("", None),
+    ],
+)
+def test_a_retirement_notice_yields_an_actionable_model_name(message, expected):
+    from counterfoil.llm.gemini_client import suggested_replacement
+
+    assert suggested_replacement(message) == expected
+
+
+def test_a_retired_model_degrades_with_the_replacement_still_readable(tmp_path):
+    """The 404 body carries the fix; it has to survive into the rationale."""
+    import json as _json
+
+    from counterfoil.domain.diagnosis import DiagnosisPath
+    from counterfoil.kernel.diagnose.llm import LLMDiagnoser
+    from counterfoil.llm import Budget, FixtureStore
+    from counterfoil.llm.gemini_client import suggested_replacement
+    from test_llm_diagnoser import event
+
+    body = _json.dumps({
+        "error": {
+            "code": 404,
+            "message": "This model models/gemini-2.5-flash is no longer available "
+                       "to new users. Please update your code to use "
+                       "models/gemini-3.6-flash for the latest features.",
+            "status": "NOT_FOUND",
+        }
+    }).encode()
+
+    class _Body:
+        def read(self):
+            return body
+
+    def retired(url, body_, timeout):
+        err = urllib.error.HTTPError(url, 404, "Not Found", {}, None)
+        err.read = _Body().read
+        raise err
+
+    dx = LLMDiagnoser(
+        client=GeminiClient(api_key="k", model="gemini-2.5-flash", transport=retired),
+        fixtures=FixtureStore(tmp_path / "fx", mode="live"),
+        budget=Budget(cap_usd=1.0),
+    )
+    result = dx(event())
+
+    assert result.path is DiagnosisPath.DEGRADED
+    assert suggested_replacement(result.rationale) == "gemini-3.6-flash"

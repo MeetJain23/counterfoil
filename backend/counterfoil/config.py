@@ -81,7 +81,7 @@ def _flag(name: str, default: bool) -> bool:
 #: remembering to change the model name.
 DEFAULT_MODEL = {
     "anthropic": "claude-haiku-4-5",
-    "gemini": "gemini-2.5-flash",
+    "gemini": "gemini-3.6-flash",
 }
 
 

@@ -133,7 +133,7 @@ def test_provider_is_inferred_from_whichever_key_is_present(monkeypatch):
     monkeypatch.setenv("GEMINI_API_KEY", "AIza-fake")
     s = load_settings()
     assert s.llm_provider == "gemini"
-    assert s.llm_model == "gemini-2.5-flash"
+    assert s.llm_model == "gemini-3.6-flash"
     assert s.api_key == "AIza-fake"
 
     monkeypatch.delenv("GEMINI_API_KEY")

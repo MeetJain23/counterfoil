@@ -20,6 +20,7 @@ it is worth knowing before pointing this at anything real.
 from __future__ import annotations
 
 import json
+import re
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
@@ -28,6 +29,17 @@ from typing import Any, Callable
 from .client import Answer, Ask, LLMError
 
 ENDPOINT = "https://generativelanguage.googleapis.com/v1beta"
+
+#: Google retires models by name and says so in the 404 body. Turning that
+#: sentence into an actionable suggestion is cheaper than reading release notes.
+_REPLACEMENT = re.compile(r"use\s+models/([A-Za-z0-9.\-]+)")
+
+
+def suggested_replacement(message: str) -> str | None:
+    """The model Google recommends instead, pulled out of an error body."""
+    match = _REPLACEMENT.search(message)
+    return match.group(1) if match else None
+
 
 #: The free tier bills nothing, so cost is reported as zero rather than
 #: estimated. The budget meter still counts calls, which is what the rate limit
@@ -89,7 +101,7 @@ class GeminiClient:
     """
 
     api_key: str
-    model: str = "gemini-2.5-flash"
+    model: str = "gemini-3.6-flash"
     timeout: float = 30.0
     transport: Callable[[str, dict, float], dict] | None = None
 
