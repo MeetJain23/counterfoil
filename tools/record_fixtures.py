@@ -17,8 +17,8 @@ line, where it lands in your shell history.
 from __future__ import annotations
 
 import argparse
-import os
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
@@ -29,7 +29,8 @@ load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
 from counterfoil.kernel.diagnose import rules  # noqa: E402
 from counterfoil.kernel.diagnose.llm import LLMDiagnoser, case_fingerprint  # noqa: E402
-from counterfoil.llm import AnthropicClient, Budget, FixtureStore  # noqa: E402
+from counterfoil.config import load_settings  # noqa: E402
+from counterfoil.llm import Budget, FixtureStore, build_client  # noqa: E402
 from counterfoil.synth import BatchSpec, generate  # noqa: E402
 
 FIXTURES = Path("llm_fixtures")
@@ -57,10 +58,13 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--confirm", action="store_true", help="actually call the API")
     parser.add_argument("--cap-usd", type=float, default=0.50)
-    parser.add_argument("--model", default="claude-haiku-4-5")
+    parser.add_argument("--model", default=None, help="overrides the .env setting")
     parser.add_argument("--sizes", type=int, nargs="+", default=[1000])
     parser.add_argument("--seeds", type=int, nargs="+", default=[7, 11, 23, 42, 99, 2026])
     args = parser.parse_args()
+
+    settings = load_settings()
+    model = args.model or settings.llm_model
 
     questions = distinct_questions(tuple(args.sizes), tuple(args.seeds))
     store = FixtureStore(FIXTURES, mode="record" if args.confirm else "replay")
@@ -71,7 +75,13 @@ def main() -> int:
     print(f"batches      : sizes {args.sizes}, seeds {args.seeds}")
     print(f"questions    : {len(questions)} distinct, {already} already recorded")
     print(f"to record    : {todo}")
-    print(f"est. cost    : ${todo * ESTIMATE_PER_CALL_USD:.4f} at {args.model} rates")
+    print(f"provider     : {settings.llm_provider} / {model}")
+    cost = (
+        "free tier, no charge"
+        if settings.llm_provider == "gemini"
+        else f"${todo * ESTIMATE_PER_CALL_USD:.4f}"
+    )
+    print(f"est. cost    : {cost}")
     print(f"spend cap    : ${args.cap_usd:.2f}")
 
     if not args.confirm:
@@ -80,14 +90,14 @@ def main() -> int:
         print("Re-run with --confirm to record.")
         return 0
 
-    if not os.environ.get("ANTHROPIC_API_KEY"):
-        print("\nANTHROPIC_API_KEY is not set. Export it and try again.", file=sys.stderr)
+    client = build_client(replace(settings, llm_mode="live", llm_model=model))
+    if client is None:
+        key = "GEMINI_API_KEY" if settings.llm_provider == "gemini" else "ANTHROPIC_API_KEY"
+        print(f"\n{key} is not set. Put it in .env and try again.", file=sys.stderr)
         return 2
 
     budget = Budget(cap_usd=args.cap_usd)
-    diagnoser = LLMDiagnoser(
-        client=AnthropicClient(model=args.model), fixtures=store, budget=budget
-    )
+    diagnoser = LLMDiagnoser(client=client, fixtures=store, budget=budget)
 
     print()
     recorded = degraded = 0

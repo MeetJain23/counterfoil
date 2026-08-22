@@ -54,6 +54,14 @@ def _flag(name: str, default: bool) -> bool:
     return raw.lower() in {"1", "true", "yes", "on"}
 
 
+#: Default model per provider, so switching provider does not also require
+#: remembering to change the model name.
+DEFAULT_MODEL = {
+    "anthropic": "claude-haiku-4-5",
+    "gemini": "gemini-2.5-flash",
+}
+
+
 @dataclass(frozen=True)
 class Settings:
     env: str
@@ -62,6 +70,8 @@ class Settings:
     razorpay_key_secret: str
     razorpay_webhook_secret: str
     anthropic_api_key: str
+    gemini_api_key: str
+    llm_provider: str
     llm_model: str
     llm_mode: str
     llm_fixture_dir: Path
@@ -72,11 +82,31 @@ class Settings:
         return bool(self.razorpay_key_id and self.razorpay_key_secret)
 
     @property
+    def api_key(self) -> str:
+        return {
+            "anthropic": self.anthropic_api_key,
+            "gemini": self.gemini_api_key,
+        }.get(self.llm_provider, "")
+
+    @property
     def can_call_llm(self) -> bool:
-        return self.llm_mode in {"record", "live"} and bool(self.anthropic_api_key)
+        return self.llm_mode in {"record", "live"} and bool(self.api_key)
+
+
+def _resolve_provider() -> str:
+    """Explicit setting wins; otherwise infer from whichever key is present."""
+    declared = _env("COUNTERFOIL_LLM_PROVIDER").lower()
+    if declared:
+        return declared
+    if _env("GEMINI_API_KEY"):
+        return "gemini"
+    if _env("ANTHROPIC_API_KEY"):
+        return "anthropic"
+    return "gemini"
 
 
 def load_settings(*, allow_missing_credentials: bool = True) -> Settings:
+    provider = _resolve_provider()
     settings = Settings(
         env=_env("COUNTERFOIL_ENV", "dev"),
         dry_run=_flag("COUNTERFOIL_DRY_RUN", True),
@@ -84,7 +114,9 @@ def load_settings(*, allow_missing_credentials: bool = True) -> Settings:
         razorpay_key_secret=_env("RAZORPAY_KEY_SECRET"),
         razorpay_webhook_secret=_env("RAZORPAY_WEBHOOK_SECRET"),
         anthropic_api_key=_env("ANTHROPIC_API_KEY"),
-        llm_model=_env("COUNTERFOIL_LLM_MODEL", "claude-haiku-4-5"),
+        gemini_api_key=_env("GEMINI_API_KEY"),
+        llm_provider=provider,
+        llm_model=_env("COUNTERFOIL_LLM_MODEL") or DEFAULT_MODEL.get(provider, ""),
         llm_mode=_env("COUNTERFOIL_LLM_MODE", "replay"),
         llm_fixture_dir=Path(_env("COUNTERFOIL_LLM_FIXTURE_DIR", "llm_fixtures")),
         spend_cap_usd=float(_env("COUNTERFOIL_SPEND_CAP_USD", "2.00")),
@@ -110,6 +142,12 @@ def assert_safe(settings: Settings, *, allow_missing_credentials: bool = True) -
             )
     elif not allow_missing_credentials:
         raise UnsafeConfigError("RAZORPAY_KEY_ID is required for this operation")
+
+    if settings.llm_provider not in DEFAULT_MODEL:
+        raise UnsafeConfigError(
+            f"COUNTERFOIL_LLM_PROVIDER must be one of {sorted(DEFAULT_MODEL)}, "
+            f"got {settings.llm_provider!r}"
+        )
 
     if settings.llm_mode not in {"replay", "record", "live"}:
         raise UnsafeConfigError(

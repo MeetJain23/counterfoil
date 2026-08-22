@@ -18,6 +18,9 @@ def clean_env(monkeypatch):
         "COUNTERFOIL_DRY_RUN",
         "COUNTERFOIL_LLM_MODE",
         "COUNTERFOIL_SPEND_CAP_USD",
+        "COUNTERFOIL_LLM_PROVIDER",
+        "COUNTERFOIL_LLM_MODEL",
+        "GEMINI_API_KEY",
     ):
         monkeypatch.delenv(name, raising=False)
 
@@ -119,3 +122,51 @@ def test_dotenv_values_are_literal(tmp_path):
     env.write_text("COUNTERFOIL_LLM_MODEL=$(whoami)\n", encoding="utf-8")
     load_dotenv(env, override=True)
     assert os.environ["COUNTERFOIL_LLM_MODEL"] == "$(whoami)"
+
+
+# --------------------------------------------------------------------- #
+# provider selection                                                    #
+# --------------------------------------------------------------------- #
+
+
+def test_provider_is_inferred_from_whichever_key_is_present(monkeypatch):
+    monkeypatch.setenv("GEMINI_API_KEY", "AIza-fake")
+    s = load_settings()
+    assert s.llm_provider == "gemini"
+    assert s.llm_model == "gemini-2.5-flash"
+    assert s.api_key == "AIza-fake"
+
+    monkeypatch.delenv("GEMINI_API_KEY")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-fake")
+    s = load_settings()
+    assert s.llm_provider == "anthropic"
+    assert s.llm_model == "claude-haiku-4-5"
+
+
+def test_an_explicit_provider_beats_inference(monkeypatch):
+    monkeypatch.setenv("GEMINI_API_KEY", "AIza-fake")
+    monkeypatch.setenv("COUNTERFOIL_LLM_PROVIDER", "anthropic")
+    s = load_settings()
+    assert s.llm_provider == "anthropic"
+    assert s.api_key == ""          # the anthropic key is not set
+    assert s.can_call_llm is False
+
+
+def test_an_unknown_provider_refuses_to_boot(monkeypatch):
+    monkeypatch.setenv("COUNTERFOIL_LLM_PROVIDER", "openai")
+    with pytest.raises(UnsafeConfigError, match="LLM_PROVIDER"):
+        load_settings()
+
+
+def test_an_explicit_model_beats_the_provider_default(monkeypatch):
+    monkeypatch.setenv("GEMINI_API_KEY", "AIza-fake")
+    monkeypatch.setenv("COUNTERFOIL_LLM_MODEL", "gemini-3.0-something")
+    assert load_settings().llm_model == "gemini-3.0-something"
+
+
+def test_replay_mode_builds_no_client_even_with_a_key(monkeypatch):
+    """The default path needs no network, which is what makes it reproducible."""
+    from counterfoil.llm import build_client
+
+    monkeypatch.setenv("GEMINI_API_KEY", "AIza-fake")
+    assert build_client(load_settings()) is None
