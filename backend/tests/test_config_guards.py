@@ -1,3 +1,5 @@
+import os
+
 import pytest
 
 from counterfoil.config import UnsafeConfigError, load_settings
@@ -68,3 +70,52 @@ def test_live_llm_needs_an_actual_key(monkeypatch):
     assert load_settings().can_call_llm is False
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-fake")
     assert load_settings().can_call_llm is True
+
+
+# --------------------------------------------------------------------- #
+# .env loading                                                          #
+# --------------------------------------------------------------------- #
+
+
+def test_dotenv_is_read(tmp_path, monkeypatch):
+    from counterfoil.config import load_dotenv
+
+    env = tmp_path / ".env"
+    env.write_text(
+        '# a comment\n'
+        'ANTHROPIC_API_KEY="sk-ant-from-file"\n'
+        "RAZORPAY_KEY_ID='" + TEST_KEY + "'\n"
+        "\n"
+        "MALFORMED_LINE_NO_EQUALS\n",
+        encoding="utf-8",
+    )
+    assert load_dotenv(env) == 2
+    s = load_settings()
+    assert s.anthropic_api_key == "sk-ant-from-file"
+    assert s.razorpay_key_id == TEST_KEY
+
+
+def test_a_real_env_var_beats_the_file(tmp_path, monkeypatch):
+    from counterfoil.config import load_dotenv
+
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-from-shell")
+    env = tmp_path / ".env"
+    env.write_text("ANTHROPIC_API_KEY=sk-ant-from-file\n", encoding="utf-8")
+    load_dotenv(env)
+    assert load_settings().anthropic_api_key == "sk-ant-from-shell"
+
+
+def test_a_missing_dotenv_is_not_an_error(tmp_path):
+    from counterfoil.config import load_dotenv
+
+    assert load_dotenv(tmp_path / "nope.env") == 0
+
+
+def test_dotenv_values_are_literal(tmp_path):
+    """No shell expansion, no substitution, nothing that could execute."""
+    from counterfoil.config import load_dotenv
+
+    env = tmp_path / ".env"
+    env.write_text("COUNTERFOIL_LLM_MODEL=$(whoami)\n", encoding="utf-8")
+    load_dotenv(env, override=True)
+    assert os.environ["COUNTERFOIL_LLM_MODEL"] == "$(whoami)"

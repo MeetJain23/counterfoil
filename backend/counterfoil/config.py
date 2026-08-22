@@ -17,6 +17,32 @@ class UnsafeConfigError(RuntimeError):
     """Raised when configuration would let the process touch something real."""
 
 
+def load_dotenv(path: str | Path = ".env", *, override: bool = False) -> int:
+    """Read a .env file into the environment. Deliberately dependency-free.
+
+    Real environment variables win by default, so CI and a shell export both
+    still beat the file. Values are taken literally: no shell expansion, no
+    command substitution, nothing that could execute anything.
+    """
+    file = Path(path)
+    if not file.is_file():
+        return 0
+
+    loaded = 0
+    for line in file.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        if not key or (not override and key in os.environ):
+            continue
+        os.environ[key] = value
+        loaded += 1
+    return loaded
+
+
 def _env(name: str, default: str = "") -> str:
     return os.environ.get(name, default).strip()
 

@@ -17,6 +17,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
 
+from counterfoil.config import load_dotenv  # noqa: E402
+
+load_dotenv(Path(__file__).resolve().parents[1] / ".env")
+
 from counterfoil.domain.money import Money  # noqa: E402
 from counterfoil.eval import run_batch  # noqa: E402
 from counterfoil.eval.sensitivity import run_across_seeds, run_sensitivity  # noqa: E402
