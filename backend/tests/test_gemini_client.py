@@ -481,3 +481,46 @@ def test_a_non_rate_limit_failure_does_not_widen_pacing():
     client, _, _ = build(transport=flaky(1, code=503), min_interval_seconds=4.0)
     client.ask(ASK)
     assert client.min_interval_seconds == 4.0
+
+
+def test_a_quota_failure_names_which_limit_was_hit():
+    """Per-minute means slow down; per-day means come back tomorrow.
+
+    Truncating the error body to 300 characters hid the only field that tells
+    those two apart, which is the whole question when a batch stalls.
+    """
+    from counterfoil.llm.gemini_client import quota_hint
+
+    body = json.dumps({"error": {"code": 429, "details": [{
+        "@type": "type.googleapis.com/google.rpc.QuotaFailure",
+        "violations": [{
+            "quotaId": "GenerateRequestsPerDayPerProjectPerModel-FreeTier",
+            "quotaValue": "50",
+        }],
+    }]}})
+    hint = quota_hint(body)
+    assert "PerDay" in hint
+    assert "per day" in hint
+    assert "limit 50" in hint
+
+
+def test_a_per_minute_quota_is_labelled_as_such():
+    from counterfoil.llm.gemini_client import quota_hint
+
+    body = '{"quotaId":"GenerateRequestsPerMinutePerProjectPerModel-FreeTier"}'
+    assert "per minute" in quota_hint(body)
+
+
+def test_a_body_with_no_quota_detail_yields_no_hint():
+    from counterfoil.llm.gemini_client import quota_hint
+
+    assert quota_hint('{"error":{"code":429,"message":"slow down"}}') is None
+
+
+def test_the_quota_hint_reaches_the_error_message():
+    body = json.dumps({"error": {"code": 429, "details": [
+        {"violations": [{"quotaId": "GenerateRequestsPerDayPerProjectPerModel-FreeTier"}]}
+    ]}}).encode()
+    client, _, _ = build(transport=http_error(429, body), max_retries=0)
+    with pytest.raises(LLMError, match="per day"):
+        client.ask(ASK)

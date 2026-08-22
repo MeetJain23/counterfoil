@@ -62,6 +62,30 @@ def retry_after_seconds(body: str) -> float | None:
     return float(match.group(1)) if match else None
 
 
+#: A 429 body names which quota was hit and what its ceiling is, in a
+#: QuotaFailure detail. Which quota it is changes what you should do about it
+#: entirely: a per-minute limit means slow down, a per-day limit means come
+#: back tomorrow. Truncating the body hid the one field that distinguishes them.
+_QUOTA_ID = re.compile(r'"quotaId"\s*:\s*"([^"]+)"')
+_QUOTA_VALUE = re.compile(r'"quotaValue"\s*:\s*"?(\d+)"?')
+
+
+def quota_hint(body: str) -> str | None:
+    """Which limit was hit, in a form worth putting in front of a human."""
+    quota = _QUOTA_ID.search(body)
+    if not quota:
+        return None
+    name = quota.group(1)
+    value = _QUOTA_VALUE.search(body)
+    ceiling = f", limit {value.group(1)}" if value else ""
+    period = (
+        "per day" if "PerDay" in name
+        else "per minute" if "PerMinute" in name
+        else "unknown period"
+    )
+    return f"{name} ({period}{ceiling})"
+
+
 def _sleep(seconds: float) -> None:
     """Indirection so a test can patch ``time.sleep`` and be obeyed.
 
@@ -194,7 +218,9 @@ class GeminiClient:
                         self.on_retry(attempt + 1, delay, f"{exc.code}")
                     self.sleep(delay)
                     continue
-                raise LLMError(f"{exc.code} from Gemini: {detail[:300]}") from exc
+                hint = quota_hint(detail)
+                summary = f"quota {hint}" if hint else detail[:300]
+                raise LLMError(f"{exc.code} from Gemini: {summary}") from exc
             except (urllib.error.URLError, TimeoutError) as exc:
                 # A dropped connection or a DNS blip is the most transient
                 # failure there is, and the first version of this did not retry

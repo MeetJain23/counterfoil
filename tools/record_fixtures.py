@@ -112,12 +112,19 @@ def main() -> int:
     diagnoser = LLMDiagnoser(client=client, fixtures=store, budget=budget)
 
     print()
-    recorded = degraded = 0
+    recorded = degraded = cached = 0
     for i, (key, event) in enumerate(questions.items(), 1):
+        hits_before = store.hits
         result = diagnoser(event)
+        served_from_cache = store.hits > hits_before
         if result.path.value == "llm":
-            recorded += 1
-            print(f"  [{i}/{len(questions)}] {result.cause.value} "
+            if served_from_cache:
+                cached += 1
+                label = "already recorded"
+            else:
+                recorded += 1
+                label = "recorded"
+            print(f"  [{i}/{len(questions)}] {label}: {result.cause.value} "
                   f"({result.confidence:.2f})", flush=True)
         else:
             degraded += 1
@@ -127,8 +134,14 @@ def main() -> int:
             break
 
     print()
-    print(f"recorded  : {recorded}")
-    print(f"withheld  : {degraded}")
+    print(f"newly recorded : {recorded}")
+    print(f"already had    : {cached}")
+    print(f"withheld       : {degraded}")
+    if degraded and not recorded:
+        print()
+        print("Nothing new was recorded. Every attempt was refused, which at this")
+        print("pacing means a daily quota rather than a per-minute one. Wait for the")
+        print("reset, or pass --model with a different model from tools/check_llm.py.")
     print(budget.summary())
     print(store.stats())
     print(f"\nFixtures are in {FIXTURES}/. Commit them.")
