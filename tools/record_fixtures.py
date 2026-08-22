@@ -59,6 +59,8 @@ def main() -> int:
     parser.add_argument("--confirm", action="store_true", help="actually call the API")
     parser.add_argument("--cap-usd", type=float, default=0.50)
     parser.add_argument("--model", default=None, help="overrides the .env setting")
+    parser.add_argument("--rpm", type=float, default=8.0,
+                        help="requests per minute; the free tier is capped")
     parser.add_argument("--sizes", type=int, nargs="+", default=[1000])
     parser.add_argument("--seeds", type=int, nargs="+", default=[7, 11, 23, 42, 99, 2026])
     args = parser.parse_args()
@@ -95,6 +97,14 @@ def main() -> int:
         key = "GEMINI_API_KEY" if settings.llm_provider == "gemini" else "ANTHROPIC_API_KEY"
         print(f"\n{key} is not set. Put it in .env and try again.", file=sys.stderr)
         return 2
+
+    if hasattr(client, "min_interval_seconds"):
+        client.min_interval_seconds = 60.0 / args.rpm if args.rpm > 0 else 0.0
+        client.on_retry = lambda n, delay, code: print(
+            f"    rate limited ({code}), waiting {delay:.0f}s before retry {n}"
+        )
+        print(f"pacing       : {args.rpm:.0f} requests/minute, "
+              f"about {len(questions) * 60 / args.rpm / 60:.1f} minutes")
 
     budget = Budget(cap_usd=args.cap_usd)
     diagnoser = LLMDiagnoser(client=client, fixtures=store, budget=budget)

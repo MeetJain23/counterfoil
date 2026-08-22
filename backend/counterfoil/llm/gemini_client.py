@@ -21,9 +21,10 @@ from __future__ import annotations
 
 import json
 import re
+import time
 import urllib.error
 import urllib.request
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Callable
 
 from .client import Answer, Ask, LLMError
@@ -39,6 +40,21 @@ def suggested_replacement(message: str) -> str | None:
     """The model Google recommends instead, pulled out of an error body."""
     match = _REPLACEMENT.search(message)
     return match.group(1) if match else None
+
+
+#: Worth trying again: rate limits and transient server faults.
+RETRYABLE_STATUS = frozenset({429, 500, 502, 503, 504})
+
+BACKOFF_BASE = 8.0
+
+#: A 429 body carries a RetryInfo detail saying how long to wait. Obeying it
+#: beats guessing, and guessing short is how you get rate limited for longer.
+_RETRY_DELAY = re.compile(r'"retryDelay"\s*:\s*"(\d+(?:\.\d+)?)s"')
+
+
+def retry_after_seconds(body: str) -> float | None:
+    match = _RETRY_DELAY.search(body)
+    return float(match.group(1)) if match else None
 
 
 #: The free tier bills nothing, so cost is reported as zero rather than
@@ -104,18 +120,53 @@ class GeminiClient:
     model: str = "gemini-3.6-flash"
     timeout: float = 30.0
     transport: Callable[[str, dict, float], dict] | None = None
+    #: Minimum gap between requests. The free tier is rate limited per minute,
+    #: so a batch that fires as fast as it can will spend most of its calls
+    #: collecting 429s. Pacing is cheaper than retrying.
+    min_interval_seconds: float = 0.0
+    max_retries: int = 4
+    #: Injected so tests do not actually wait.
+    sleep: Callable[[float], None] = time.sleep
+    clock: Callable[[], float] = time.monotonic
+    #: Called before each retry, for progress output.
+    on_retry: Callable[[int, float, str], None] | None = None
+    #: None means no call has been made yet. Not 0.0: a monotonic clock is
+    #: allowed to read zero, and a falsy sentinel would silently disable pacing
+    #: on the one call where it matters most.
+    _last_call_at: float | None = field(default=None, repr=False)
+
+    def _pace(self) -> None:
+        if self.min_interval_seconds <= 0 or self._last_call_at is None:
+            return
+        elapsed = self.clock() - self._last_call_at
+        if elapsed < self.min_interval_seconds:
+            self.sleep(self.min_interval_seconds - elapsed)
 
     def _send(self, url: str, body: dict) -> dict:
         send = self.transport or _post
-        try:
-            return send(url, body, self.timeout)
-        except urllib.error.HTTPError as exc:
-            detail = exc.read().decode("utf-8", "replace")[:300]
-            raise LLMError(f"{exc.code} from Gemini: {detail}") from exc
-        except urllib.error.URLError as exc:
-            raise LLMError(f"could not reach Gemini: {exc.reason}") from exc
-        except TimeoutError as exc:
-            raise LLMError(f"Gemini timed out after {self.timeout}s") from exc
+
+        for attempt in range(self.max_retries + 1):
+            self._pace()
+            try:
+                result = send(url, body, self.timeout)
+                self._last_call_at = self.clock()
+                return result
+            except urllib.error.HTTPError as exc:
+                self._last_call_at = self.clock()
+                detail = exc.read().decode("utf-8", "replace")
+                if exc.code in RETRYABLE_STATUS and attempt < self.max_retries:
+                    delay = retry_after_seconds(detail) or BACKOFF_BASE * (2**attempt)
+                    if self.on_retry:
+                        self.on_retry(attempt + 1, delay, f"{exc.code}")
+                    self.sleep(delay)
+                    continue
+                raise LLMError(f"{exc.code} from Gemini: {detail[:300]}") from exc
+            except urllib.error.URLError as exc:
+                raise LLMError(f"could not reach Gemini: {exc.reason}") from exc
+            except TimeoutError as exc:
+                raise LLMError(f"Gemini timed out after {self.timeout}s") from exc
+
+        raise LLMError(f"Gemini still rate limiting after {self.max_retries} retries")
 
     def ask(self, request: Ask) -> Answer:
         url = f"{ENDPOINT}/models/{self.model}:generateContent?key={self.api_key}"

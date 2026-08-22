@@ -161,10 +161,128 @@ def test_network_failures_become_llm_errors():
 
 def test_http_errors_become_llm_errors():
     def refused(url, body, timeout):
-        raise urllib.error.HTTPError(url, 429, "Too Many Requests", {}, None)
+        raise urllib.error.HTTPError(url, 400, "Bad Request", {}, None)
 
+    with pytest.raises(LLMError, match="400"):
+        GeminiClient(api_key="k", transport=refused, max_retries=0).ask(ASK)
+
+
+# --------------------------------------------------------------------- #
+# rate limiting (see FAILURES.md 005)                                   #
+# --------------------------------------------------------------------- #
+
+
+def http_error(code, body=b""):
+    def raiser(url, request_body, timeout):
+        err = urllib.error.HTTPError(url, code, "err", {}, None)
+        err.read = lambda: body
+        raise err
+
+    return raiser
+
+
+def flaky(fail_times, code=429, body=b""):
+    """Fails a few times, then succeeds. What a rate limit actually looks like."""
+    state = {"n": 0}
+
+    def transport(url, request_body, timeout):
+        state["n"] += 1
+        if state["n"] <= fail_times:
+            err = urllib.error.HTTPError(url, code, "err", {}, None)
+            err.read = lambda: body
+            raise err
+        return ok_payload()
+
+    return transport
+
+
+def recorder():
+    slept = []
+    return slept, slept.append
+
+
+def test_a_rate_limit_is_retried_rather_than_surfaced():
+    slept, sleep = recorder()
+    client = GeminiClient(api_key="k", transport=flaky(2), sleep=sleep)
+    assert client.ask(ASK).data == ANSWER
+    assert len(slept) == 2
+
+
+def test_backoff_grows_between_attempts():
+    slept, sleep = recorder()
+    GeminiClient(api_key="k", transport=flaky(3), sleep=sleep).ask(ASK)
+    assert slept == sorted(slept)
+    assert slept[-1] > slept[0]
+
+
+def test_the_providers_own_retry_delay_is_obeyed_over_our_guess():
+    body = b'{"error":{"code":429},"details":[{"retryDelay":"27s"}]}'
+    slept, sleep = recorder()
+    GeminiClient(api_key="k", transport=flaky(1, body=body), sleep=sleep).ask(ASK)
+    assert slept == [27.0]
+
+
+@pytest.mark.parametrize("code", [429, 500, 502, 503, 504])
+def test_transient_failures_are_retried(code):
+    slept, sleep = recorder()
+    client = GeminiClient(api_key="k", transport=flaky(1, code=code), sleep=sleep)
+    assert client.ask(ASK).data == ANSWER
+
+
+@pytest.mark.parametrize("code", [400, 401, 403, 404])
+def test_permanent_failures_are_not_retried(code):
+    slept, sleep = recorder()
+    with pytest.raises(LLMError):
+        GeminiClient(api_key="k", transport=http_error(code), sleep=sleep).ask(ASK)
+    assert slept == []
+
+
+def test_retries_give_up_eventually():
+    slept, sleep = recorder()
+    client = GeminiClient(api_key="k", transport=http_error(429), sleep=sleep, max_retries=3)
     with pytest.raises(LLMError, match="429"):
-        GeminiClient(api_key="k", transport=refused).ask(ASK)
+        client.ask(ASK)
+    assert len(slept) == 3
+
+
+def test_pacing_waits_between_calls():
+    """Free tier caps requests per minute, so a batch must pace itself."""
+    slept, sleep = recorder()
+    now = {"t": 0.0}
+    client = GeminiClient(
+        api_key="k",
+        transport=canned(ok_payload()),
+        sleep=sleep,
+        clock=lambda: now["t"],
+        min_interval_seconds=6.0,
+    )
+    client.ask(ASK)          # first call does not wait
+    client.ask(ASK)          # second is immediate, so it waits the full interval
+    assert slept == [6.0]
+
+
+def test_pacing_does_not_wait_when_enough_time_already_passed():
+    slept, sleep = recorder()
+    now = {"t": 0.0}
+    client = GeminiClient(
+        api_key="k",
+        transport=canned(ok_payload()),
+        sleep=sleep,
+        clock=lambda: now["t"],
+        min_interval_seconds=6.0,
+    )
+    client.ask(ASK)
+    now["t"] = 30.0
+    client.ask(ASK)
+    assert slept == []
+
+
+def test_pacing_is_off_by_default():
+    slept, sleep = recorder()
+    client = GeminiClient(api_key="k", transport=canned(ok_payload()), sleep=sleep)
+    client.ask(ASK)
+    client.ask(ASK)
+    assert slept == []
 
 
 # --------------------------------------------------------------------- #
@@ -256,7 +374,7 @@ def test_a_retirement_notice_yields_an_actionable_model_name(message, expected):
     assert suggested_replacement(message) == expected
 
 
-def test_a_retired_model_degrades_with_the_replacement_still_readable(tmp_path):
+def test_a_retired_model_degrades_with_the_replacement_still_readable(tmp_path):  # noqa: E501
     """The 404 body carries the fix; it has to survive into the rationale."""
     import json as _json
 

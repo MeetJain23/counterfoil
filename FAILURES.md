@@ -175,3 +175,49 @@ into the diagnosis rationale intact.
 broken thing is worse than no tool, because it spends the reader's trust. The
 check was right to exist and wrong to summarise. Where it now cannot be certain,
 it says so.
+
+---
+
+## 005: The recorder had no idea rate limits existed
+
+**Date:** 2026-08-21 · **Area:** model provider
+
+**Expected:** Record 56 answers once, commit them, never pay for them again.
+
+**What happened:** 9 recorded, 47 refused. The free tier caps requests per
+minute and the client fired as fast as the loop could go, so 84% of the run
+collected `429`s. The whole design goal of the fixture store is to make model
+calls a one-off, and the recorder could not complete a single pass.
+
+Worth noting what did not happen: nothing crashed, no half-written fixture was
+saved, and the 9 good answers persisted. Every 429 became a `DEGRADED`
+diagnosis, exactly like an unreachable API, because that path was already
+built. Re-running simply resumed. The failure was in throughput, not in
+correctness, which is the cheap kind.
+
+**Cost:** One wasted run and about ten minutes.
+
+**Fix:** The client now paces itself and retries. On a retryable status it
+sleeps and tries again, obeying the provider's own `retryDelay` when the body
+carries one and falling back to exponential backoff when it does not. Guessing
+a shorter wait than the provider asked for is how a rate limit becomes a longer
+rate limit. `429`, `500`, `502`, `503` and `504` are retried; `400`, `401`,
+`403` and `404` are not, because repeating a malformed request just wastes the
+quota that the real requests need.
+
+Two things surfaced while testing it:
+
+The first run of the new suite took 123 seconds instead of 3.5, because an
+existing test raised a 429 and the retry logic dutifully slept through 8, 16,
+32 and 64 seconds of real backoff. `sleep` and `clock` are now injected, so
+every timing test asserts against a recorded list of durations and waits for
+nothing.
+
+The pacing test then failed for a better reason. `_last_call_at` used `0.0` as
+its "no call yet" sentinel and checked it for truthiness, so with a clock
+reading zero the guard disabled pacing entirely. A monotonic clock is allowed
+to return zero. The sentinel is `None` now.
+
+**What it taught us:** the degradation path built for "the model is down"
+covered "the model is rate limiting" for free, without a line written for it.
+Designing one honest failure mode bought a second one nobody had thought about.
