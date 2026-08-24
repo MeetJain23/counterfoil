@@ -1,0 +1,14 @@
+{
+  "cost_usd": 0.0,
+  "input_tokens": 739,
+  "model": "gemini-3.6-flash",
+  "output_tokens": 51,
+  "payload": {
+    "cause": "authentication_dropoff",
+    "confidence": 0.95,
+    "key_evidence": [
+      "Customer did not complete the additional verification step."
+    ],
+    "rationale": "The failure description explicitly states that the customer did not complete the additional verification step during authorization."
+  }
+}

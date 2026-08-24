@@ -1,0 +1,14 @@
+{
+  "cost_usd": 0.0,
+  "input_tokens": 746,
+  "model": "gemini-3.6-flash",
+  "output_tokens": 67,
+  "payload": {
+    "cause": "issuer_decline_soft",
+    "confidence": 0.85,
+    "key_evidence": [
+      "Transaction could not be completed. Please check with your bank and try again."
+    ],
+    "rationale": "The error description indicates a generic refusal directing the customer to check with their bank and retry, which aligns with a soft issuer decline."
+  }
+}

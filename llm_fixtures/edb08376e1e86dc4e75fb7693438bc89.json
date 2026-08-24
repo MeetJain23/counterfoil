@@ -1,0 +1,15 @@
+{
+  "cost_usd": 0.0,
+  "input_tokens": 743,
+  "model": "gemini-3.6-flash",
+  "output_tokens": 76,
+  "payload": {
+    "cause": "technical_gateway",
+    "confidence": 0.92,
+    "key_evidence": [
+      "error_source: gateway",
+      "error_description: The request failed at the processor and was not retried."
+    ],
+    "rationale": "The error source is specified as gateway and the description states that the request failed at the processor rather than being declined by an issuer or abandoned by the customer."
+  }
+}

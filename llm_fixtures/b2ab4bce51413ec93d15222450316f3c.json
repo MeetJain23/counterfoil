@@ -1,0 +1,15 @@
+{
+  "cost_usd": 0.0,
+  "input_tokens": 738,
+  "model": "gemini-3.6-flash",
+  "output_tokens": 58,
+  "payload": {
+    "cause": "technical_gateway",
+    "confidence": 0.92,
+    "key_evidence": [
+      "error_source: gateway",
+      "error_description: Something went wrong while processing the payment."
+    ],
+    "rationale": "The payment failed due to an explicit gateway-side issue with a generic failure description."
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "cost_usd": 0.0,
+  "input_tokens": 740,
+  "model": "gemini-3.6-flash",
+  "output_tokens": 53,
+  "payload": {
+    "cause": "bank_downtime",
+    "confidence": 0.9,
+    "key_evidence": [
+      "error_description: Upstream did not respond within the expected window."
+    ],
+    "rationale": "The error description explicitly mentions that the upstream system timed out during payment authorization."
+  }
+}

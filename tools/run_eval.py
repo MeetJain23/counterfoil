@@ -102,6 +102,7 @@ def model_contribution(spec: BatchSpec) -> None:
     a language model on top of it recovers anything the rules could not, which
     is a narrower and more honest claim than "we used AI".
     """
+    from counterfoil.eval import measure_contribution
     from counterfoil.kernel.diagnose.llm import LLMDiagnoser
     from counterfoil.llm import Budget, FixtureStore
 
@@ -109,30 +110,33 @@ def model_contribution(spec: BatchSpec) -> None:
     budget = Budget(cap_usd=0.0)
     diagnoser = LLMDiagnoser(client=None, fixtures=store, budget=budget)
 
-    rules_only = run_batch(spec)
-    with_model = run_batch(spec, diagnoser=diagnoser)
-
     print()
     print(RULE)
     print("MODEL CONTRIBUTION  |  what the language model adds over rules alone")
     print(RULE)
 
-    a, b = rules_only.agent, with_model.agent
-    print(f"{'':22s} {'incremental':>13s} {'recovered':>10s} {'escalations':>12s}")
-    print(f"{'rules only':22s} {rs(rules_only.incremental_paise(a)):>13s} "
-          f"{a.n_recovered:>10d} {_escalations(a):>12d}")
-    print(f"{'rules plus model':22s} {rs(with_model.incremental_paise(b)):>13s} "
-          f"{b.n_recovered:>10d} {_escalations(b):>12d}")
+    if store.hits == 0 and not any(Path("llm_fixtures").glob("*.json")):
+        print("No fixtures recorded, so the model arm would degrade to escalation on")
+        print("every ambiguous case. Run tools/record_fixtures.py --confirm first.")
+        return
 
-    delta = with_model.incremental_paise(b) - rules_only.incremental_paise(a)
+    c = measure_contribution(spec, diagnoser=diagnoser)
+
+    print(f"{'rules only':22s} {rs(c.rules_only_paise):>13s}")
+    print(f"{'rules plus model':22s} {rs(c.with_model_paise):>13s}"
+          f"   +{rs(c.model_adds_paise)}")
+    print(f"{'perfect diagnosis':22s} {rs(c.oracle_paise):>13s}"
+          f"   +{rs(c.headroom_paise)} headroom over rules")
     print()
-    print(f"the model is worth Rs {rs(delta)} on this batch")
+    print(f"The model captures {c.gap_closed:.1%} of the headroom that better diagnosis")
+    print(f"could possibly reach, leaving Rs {rs(c.left_on_the_table_paise)} on the table.")
+    print()
+    print("The third row is an oracle reading the generator's held-back labels. No")
+    print("real system can do that; it is here so the model's value is a rupee")
+    print("figure against a ceiling rather than an accuracy percentage against")
+    print("nothing.")
+    print()
     print(store.stats())
-    print(budget.summary())
-    if store.hits == 0:
-        print()
-        print("No fixtures recorded yet, so the model arm degraded to escalation on")
-        print("every ambiguous case. Run tools/record_fixtures.py --confirm to record.")
 
 
 def _escalations(arm) -> int:

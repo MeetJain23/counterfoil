@@ -1,0 +1,14 @@
+{
+  "cost_usd": 0.0,
+  "input_tokens": 741,
+  "model": "gemini-3.6-flash",
+  "output_tokens": 49,
+  "payload": {
+    "cause": "bank_downtime",
+    "confidence": 0.95,
+    "key_evidence": [
+      "Upstream did not respond within the expected window."
+    ],
+    "rationale": "The error description explicitly attributes the failure to an upstream timeout without response."
+  }
+}

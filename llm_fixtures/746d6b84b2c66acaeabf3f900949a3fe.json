@@ -1,0 +1,14 @@
+{
+  "cost_usd": 0.0,
+  "input_tokens": 744,
+  "model": "gemini-3.6-flash",
+  "output_tokens": 54,
+  "payload": {
+    "cause": "insufficient_funds",
+    "confidence": 0.95,
+    "key_evidence": [
+      "Payment unsuccessful - limit or balance issue reported by the issuer."
+    ],
+    "rationale": "The error description explicitly attributes the failure to a limit or balance issue reported by the issuer."
+  }
+}

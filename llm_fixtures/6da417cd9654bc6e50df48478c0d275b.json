@@ -1,0 +1,15 @@
+{
+  "cost_usd": 0.0,
+  "input_tokens": 744,
+  "model": "gemini-3.6-flash",
+  "output_tokens": 70,
+  "payload": {
+    "cause": "technical_gateway",
+    "confidence": 0.95,
+    "key_evidence": [
+      "error_source: gateway",
+      "error_description: The request failed at the processor and was not retried."
+    ],
+    "rationale": "The failure occurred on the processor side as indicated by the gateway error source and the description stating the request failed at the processor."
+  }
+}

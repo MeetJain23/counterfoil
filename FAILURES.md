@@ -316,3 +316,61 @@ pattern rather than an accident, so it is now structural:
 **What it taught us:** the second occurrence is the useful one. The first looks
 like a mistake and invites a local fix; the same mistake twice says the design
 permits it, and that is worth a guard rather than another patch.
+
+---
+
+## 006: The model's only mistake was my mistake
+
+**Date:** 2026-08-24 · **Area:** model diagnosis / synthetic data
+
+**Expected:** Measure how accurately the model classifies the ambiguous
+failures the rule table cannot close, and report the number honestly whatever
+it turned out to be.
+
+**What happened:** 88.6% accuracy across 810 ambiguous cases, and every single
+one of the 92 errors was the same confusion: a true `insufficient_funds`
+classified as `issuer_decline_soft`. Not scattered noise. One systematic error.
+
+Broken down by the description text the model actually reads, thirteen of the
+fourteen variants were classified **100% correctly**. The entire error was one
+sentence:
+
+> Transaction could not be completed. Please check with your bank and try again.
+
+That sentence contains no signal about a balance. I wrote it into the
+generator's `insufficient_funds` pool, but nothing in the text says
+insufficient funds, and `issuer_decline_soft` is arguably the better reading of
+"the issuer refused and gave no reason". A human expert reading only that line
+would fail it too. The ground truth was wrong, not the answer.
+
+**Cost:** None, and it nearly went the other way. The obvious move on seeing
+88.6% was to report it as the model's accuracy ceiling. The obvious move on
+discovering the cause was to relabel the description and report 100%. Both are
+wrong: the first blames the model for my data, the second launders a data fix
+into a model result.
+
+**Fix:** The description stays where it is. Gateways really do return
+uninformative text for a genuine balance failure, so the case is realistic and
+the ambiguity is irreducible. What changed is that the number is now reported
+with the breakdown attached, because "88.6%, and here is the one sentence that
+accounts for all of it" is a more useful sentence than either 88.6% or 100%
+alone.
+
+The more interesting finding is what the model did rather than what it got
+wrong. The system prompt tells it explicitly to answer `unknown` when the
+evidence does not separate two causes. Faced with a sentence that genuinely
+does not, it answered confidently instead, at 0.85 to 0.98. Instructing a model
+to express uncertainty is not the same as getting uncertainty, and the
+confidence floor cannot catch an error delivered at 0.95.
+
+What does catch it is the architecture. Both causes are non-terminal, so the
+misdiagnosis changes retry *timing*, 8 hours instead of 26, rather than the
+class of action taken. The terminal-cause clause, the retry caps and the
+contact limits all still hold. A confident wrong answer costs money here; it
+does not cost safety, and that distinction is the entire reason the model was
+given no authority.
+
+**What it taught us:** an accuracy figure with no error analysis behind it is
+close to worthless. The single most useful thing measured this week was not
+88.6%, it was the per-variant breakdown that turned one number into a specific
+sentence in a specific file that I had written myself.

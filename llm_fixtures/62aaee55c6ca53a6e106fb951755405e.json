@@ -1,0 +1,14 @@
+{
+  "cost_usd": 0.0,
+  "input_tokens": 745,
+  "model": "gemini-3.6-flash",
+  "output_tokens": 57,
+  "payload": {
+    "cause": "bank_downtime",
+    "confidence": 0.9,
+    "key_evidence": [
+      "The remitter bank declined to process the request right now."
+    ],
+    "rationale": "The error description explicitly attributes the failure to the remitter bank declining to process the request at this moment."
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "cost_usd": 0.0,
+  "input_tokens": 741,
+  "model": "gemini-3.6-flash",
+  "output_tokens": 61,
+  "payload": {
+    "cause": "issuer_decline_hard",
+    "confidence": 0.85,
+    "key_evidence": [
+      "The instrument cannot be used for this transaction."
+    ],
+    "rationale": "The error description explicitly states that the instrument cannot be used for this transaction, indicating a restriction or lack of permission on the card."
+  }
+}

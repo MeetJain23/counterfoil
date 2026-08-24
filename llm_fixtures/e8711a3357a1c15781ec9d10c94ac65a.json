@@ -1,0 +1,15 @@
+{
+  "cost_usd": 0.0,
+  "input_tokens": 739,
+  "model": "gemini-3.6-flash",
+  "output_tokens": 68,
+  "payload": {
+    "cause": "technical_gateway",
+    "confidence": 0.85,
+    "key_evidence": [
+      "error_source: gateway",
+      "error_description: Something went wrong while processing the payment."
+    ],
+    "rationale": "The error explicitly originates from the gateway with a vague description indicating a processing failure during authorization rather than a refusal by the customer or bank."
+  }
+}

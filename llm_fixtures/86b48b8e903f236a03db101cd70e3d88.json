@@ -1,0 +1,14 @@
+{
+  "cost_usd": 0.0,
+  "input_tokens": 740,
+  "model": "gemini-3.6-flash",
+  "output_tokens": 46,
+  "payload": {
+    "cause": "authentication_dropoff",
+    "confidence": 0.95,
+    "key_evidence": [
+      "OTP page was closed before submission."
+    ],
+    "rationale": "The payment failed because the customer closed the OTP verification page before submitting it."
+  }
+}

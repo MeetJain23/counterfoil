@@ -1,0 +1,14 @@
+{
+  "cost_usd": 0.0,
+  "input_tokens": 737,
+  "model": "gemini-3.6-flash",
+  "output_tokens": 68,
+  "payload": {
+    "cause": "issuer_decline_hard",
+    "confidence": 0.95,
+    "key_evidence": [
+      "Issuer permanently refused this instrument."
+    ],
+    "rationale": "The error description explicitly states that the issuer permanently refused the payment instrument."
+  }
+}
