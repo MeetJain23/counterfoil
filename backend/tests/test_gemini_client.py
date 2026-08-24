@@ -6,6 +6,7 @@ cover is whether Google's API still looks like this, which is what
 `tools/check_llm.py` is for.
 """
 
+import http.client
 import json
 import urllib.error
 
@@ -523,4 +524,53 @@ def test_the_quota_hint_reaches_the_error_message():
     ]}}).encode()
     client, _, _ = build(transport=http_error(429, body), max_retries=0)
     with pytest.raises(LLMError, match="per day"):
+        client.ask(ASK)
+
+
+# --------------------------------------------------------------------- #
+# transport failures (see FAILURES.md 006)                              #
+# --------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        urllib.error.URLError("dns"),
+        TimeoutError("read timed out"),
+        ConnectionResetError("connection reset by peer"),
+        http.client.RemoteDisconnected("remote end closed connection"),
+        OSError(104, "Connection reset by peer"),
+        __import__("ssl").SSLError("record layer failure"),
+    ],
+    ids=["urlerror", "timeout", "connreset", "remotedisconnected", "oserror", "sslerror"],
+)
+def test_every_transport_failure_is_retried_not_raised(error):
+    """Naming these one at a time kept missing one, and each miss killed a batch."""
+    state = {"n": 0}
+
+    def transport(url, body, timeout):
+        state["n"] += 1
+        if state["n"] == 1:
+            raise error
+        return ok_payload()
+
+    client, _, retries = build(transport=transport)
+    assert client.ask(ASK).data == ANSWER
+    assert len(retries) == 1
+
+
+def test_a_persistent_transport_failure_becomes_a_readable_error():
+    def dead(url, body, timeout):
+        raise http.client.RemoteDisconnected("remote end closed connection")
+
+    client, _, _ = build(transport=dead, max_retries=1)
+    with pytest.raises(LLMError, match="RemoteDisconnected"):
+        client.ask(ASK)
+
+
+def test_an_http_status_is_not_swallowed_by_the_transport_handler():
+    """HTTPError is an OSError subclass, so clause order is load-bearing."""
+    body = b'{"error":{"code":404,"message":"use models/gemini-9-flash instead"}}'
+    client, _, _ = build(transport=http_error(404, body), max_retries=0)
+    with pytest.raises(LLMError, match="404"):
         client.ask(ASK)

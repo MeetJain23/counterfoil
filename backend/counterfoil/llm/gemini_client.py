@@ -19,6 +19,7 @@ it is worth knowing before pointing this at anything real.
 
 from __future__ import annotations
 
+import http.client
 import json
 import re
 import time
@@ -41,6 +42,13 @@ def suggested_replacement(message: str) -> str | None:
     match = _REPLACEMENT.search(message)
     return match.group(1) if match else None
 
+
+#: Transport-level failures worth retrying. urllib.error.URLError,
+#: TimeoutError, ConnectionResetError and ssl.SSLError are all OSError
+#: subclasses; http.client.HTTPException covers a reply we could not parse,
+#: which is how RemoteDisconnected arrives. urllib.error.HTTPError is also
+#: an OSError, so it must be caught before this.
+TRANSPORT_FAILURES = (OSError, http.client.HTTPException)
 
 #: Worth trying again: rate limits and transient server faults.
 RETRYABLE_STATUS = frozenset({429, 500, 502, 503, 504})
@@ -221,12 +229,15 @@ class GeminiClient:
                 hint = quota_hint(detail)
                 summary = f"quota {hint}" if hint else detail[:300]
                 raise LLMError(f"{exc.code} from Gemini: {summary}") from exc
-            except (urllib.error.URLError, TimeoutError) as exc:
-                # A dropped connection or a DNS blip is the most transient
-                # failure there is, and the first version of this did not retry
-                # it at all: one hiccup mid-batch cost 36 questions.
+            except TRANSPORT_FAILURES as exc:
+                # Everything the transport can throw short of an HTTP status.
+                # Naming the classes individually kept missing one: first a bare
+                # TimeoutError, then RemoteDisconnected, each escaping as a raw
+                # traceback and each killing a batch partway through. OSError is
+                # the common ancestor of the socket, TLS, timeout and URL error
+                # families, and HTTPException covers a malformed reply.
                 self._last_call_at = self.clock()
-                reason = getattr(exc, "reason", exc)
+                reason = getattr(exc, "reason", None) or f"{type(exc).__name__}: {exc}"
                 if attempt < self.max_retries:
                     delay = BACKOFF_BASE * (2**attempt)
                     if self.on_retry:
