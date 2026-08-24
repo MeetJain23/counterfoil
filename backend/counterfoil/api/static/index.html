@@ -102,6 +102,16 @@
   .empty { color: var(--faint); padding: 30px; text-align: center; }
   .bar { height: 6px; background: var(--panel-2); border-radius: 3px; overflow: hidden; margin-top: 8px; }
   .bar > i { display: block; height: 100%; background: var(--accent); }
+  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+  .seg button {
+    background: transparent; color: var(--dim); border: 0; border-radius: 0;
+    padding: 5px 12px; font-weight: 400; font-size: 13px;
+  }
+  .seg button + button { border-left: 1px solid var(--line); }
+  .seg button.on { background: var(--panel-2); color: var(--accent); font-weight: 600; }
+  .verdict { font-size: 12px; margin-top: 8px; padding: 8px 10px; border-radius: 6px; line-height: 1.45; }
+  .verdict.win { background: #0d2a14; color: #7ee496; }
+  .verdict.loss { background: #2a1315; color: #ff9d96; }
 </style>
 </head>
 <body>
@@ -109,6 +119,7 @@
 <header>
   <h1>COUNTERFOIL <span id="tagline">bounded revenue recovery, with the receipts</span></h1>
   <div class="controls">
+    <span id="surfaces" class="seg"></span>
     <label>batch <input id="size" type="number" value="1000" min="1" max="5000"></label>
     <label>seed <input id="seed" type="number" value="2026"></label>
     <button id="withModel" class="ghost" title="use recorded model fixtures">model: off</button>
@@ -129,7 +140,8 @@
       </div>
       <div class="card">
         <h2>Versus the naive agent</h2>
-        <div class="big" id="vsNaive">—</div>
+        <div class="big" id="vsNaive">-</div>
+        <div class="verdict" id="verdict"></div>
         <div class="sub" id="breakEven"></div>
       </div>
       <div class="card">
@@ -140,7 +152,7 @@
       <div class="card">
         <h2>Diagnosis path</h2>
         <div id="paths"></div>
-        <div class="sub faint">The model is consulted only where codes cannot decide.</div>
+        <div class="sub faint" id="pathNote"></div>
       </div>
     </div>
 
@@ -149,8 +161,9 @@
       <div class="card scroll">
         <table>
           <thead><tr>
-            <th>arm</th><th>gross</th><th>incremental</th><th>cost</th><th>wasted</th>
-            <th>recovered</th><th>caused</th><th>actions</th><th>contacts</th><th>breaches</th>
+            <th>arm</th><th>incremental</th><th>cost</th><th>net</th>
+            <th>recovered</th><th>caused</th><th>actions</th>
+            <th>msgs</th><th>notices</th><th>reviews</th><th>breaches</th>
           </tr></thead>
           <tbody id="arms"></tbody>
         </table>
@@ -158,7 +171,10 @@
           <b>caused</b> counts only recoveries the arm actually produced. Money that
           would have arrived anyway is excluded, which is the difference between
           measuring an effect and measuring your own existence.
-          <b>wasted</b> is spend on customers who were already going to pay.
+          <b>msgs</b> excludes <b>notices</b>, because a legally required pre-debit
+          notice is not discretionary contact and counting it as such would make the
+          arm obeying the rule look noisier than the arm skipping it.
+          <b>reviews</b> is human attention, the one resource here that does not scale.
         </p>
       </div>
     </section>
@@ -239,7 +255,13 @@ const rs = (p) => (p / 100).toLocaleString("en-IN", {minimumFractionDigits: 2, m
 const money = (p) => "₹" + rs(p);
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
-let runId = null, withModel = false, stateFilter = null;
+let runId = null, withModel = false, stateFilter = null, surface = "payments";
+
+const SURFACES = [
+  ["payments", "payments"],
+  ["subscriptions", "mandates"],
+  ["receivables", "invoices"],
+];
 
 const STATES = [
   ["", "all"], ["recovered", "recovered"], ["still_at_risk", "still at risk"],
@@ -260,7 +282,7 @@ async function runBatch() {
   $("status").textContent = `Running ${size} events through three arms…`;
   $("content").hidden = true;
   try {
-    const summary = await api(`/api/runs?size=${size}&seed=${seed}&with_model=${withModel}`, {method: "POST"});
+    const summary = await api(`/api/runs?size=${size}&seed=${seed}&surface=${surface}&with_model=${withModel}`, {method: "POST"});
     runId = summary.run_id;
     render(summary);
     $("status").hidden = true;
@@ -282,9 +304,16 @@ function render(s) {
   const [lo, hi] = s.confidence_interval_paise;
   $("ci").textContent = `95% CI ${money(lo)} to ${money(hi)}, paired bootstrap`;
 
-  const delta = agent.incremental_paise - naive.incremental_paise;
+  const delta = agent.net_paise - naive.net_paise;
   $("vsNaive").textContent = (delta >= 0 ? "+" : "") + money(delta);
   $("vsNaive").className = "big " + (delta >= 0 ? "good" : "bad");
+  $("verdict").className = "verdict " + (delta >= 0 ? "win" : "loss");
+  $("verdict").innerHTML = delta >= 0
+    ? `Counterfoil nets more <em>and</em> commits ${agent.violations} breaches against
+       ${naive.violations}.`
+    : `Counterfoil nets <b>${money(-delta)} less</b> than the ungoverned arm, which bought
+       that with <b>${naive.violations}</b> policy breaches. Reported rather than tuned
+       away: see FAILURES.md.`;
 
   const be = s.break_even_contact_cost_paise;
   $("breakEven").innerHTML = be === 0
@@ -298,6 +327,11 @@ function render(s) {
   $("breachSub").textContent = `Counterfoil against the naive agent, same policy, same batch.`;
 
   const total = Object.values(s.diagnosis_paths).reduce((a, b) => a + b, 0) || 1;
+  $("pathNote").innerHTML = s.rules_resolve > 0.5
+    ? `Provider error codes close <b>${(100 * s.rules_resolve).toFixed(1)}%</b> of this
+       surface, so the model is a supplement.`
+    : `Error codes close <b>${(100 * s.rules_resolve).toFixed(1)}%</b> here. The signal is
+       an email thread, so the model is the product rather than a supplement.`;
   $("paths").innerHTML = Object.entries(s.diagnosis_paths).map(([k, n]) =>
     `<div style="margin-bottom:6px">
        <span class="tag ${k}">${esc(k)}</span>
@@ -305,17 +339,19 @@ function render(s) {
        <div class="bar"><i style="width:${100 * n / total}%"></i></div>
      </div>`).join("");
 
+  const bestNet = Math.max(...s.arms.map(a => a.net_paise));
   $("arms").innerHTML = s.arms.map(a => `
     <tr>
       <td>${esc(a.arm)}</td>
-      <td>${money(a.gross_paise)}</td>
       <td>${money(a.incremental_paise)}</td>
-      <td>${money(a.cost_paise)}</td>
-      <td class="${a.wasted_paise ? "warn" : "faint"}">${money(a.wasted_paise)}</td>
+      <td class="faint">${money(a.cost_paise)}</td>
+      <td class="${a.net_paise === bestNet && a.arm !== "control" ? "good" : ""}">${money(a.net_paise)}</td>
       <td>${a.recovered}</td>
       <td>${a.attributable}</td>
       <td>${a.actions}</td>
-      <td>${a.contacts}</td>
+      <td>${a.discretionary_contacts}</td>
+      <td class="faint">${a.mandatory_notices || "-"}</td>
+      <td class="faint">${a.escalations || "-"}</td>
       <td class="${a.violations ? "bad" : "good"}">${a.violations}</td>
     </tr>`).join("");
 
@@ -456,6 +492,19 @@ function closeDrawer() {
   $("drawer").classList.remove("open");
   $("scrim").classList.remove("open");
 }
+
+function renderSurfaces() {
+  $("surfaces").innerHTML = SURFACES.map(([v, label]) =>
+    `<button class="${surface === v ? "on" : ""}" data-surface="${v}">${label}</button>`).join("");
+  $("surfaces").querySelectorAll("button").forEach(b => b.onclick = () => {
+    if (surface === b.dataset.surface) return;
+    surface = b.dataset.surface;
+    stateFilter = null;
+    renderSurfaces();
+    runBatch();
+  });
+}
+renderSurfaces();
 
 $("scrim").onclick = closeDrawer;
 document.addEventListener("keydown", e => { if (e.key === "Escape") closeDrawer(); });

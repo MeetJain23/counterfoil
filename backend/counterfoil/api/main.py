@@ -15,7 +15,7 @@ from fastapi.responses import FileResponse, JSONResponse
 
 from ..config import load_settings
 from ..kernel.policy import PolicyEngine
-from ..synth.generator import BatchSpec
+from ..domain.events import Surface
 from . import service
 from .service import MAX_BATCH, RunStore
 
@@ -56,6 +56,7 @@ def health() -> dict:
 def create_run(
     size: int = Query(1000, ge=1, le=MAX_BATCH),
     seed: int = Query(2026),
+    surface: str = Query("payments", pattern="^(payments|subscriptions|receivables)$"),
     with_model: bool = Query(False, description="use recorded model fixtures"),
 ) -> dict:
     diagnoser = None
@@ -66,7 +67,9 @@ def create_run(
 
     try:
         run = service.execute(
-            BatchSpec(size=size, seed=seed), ledger_dir=LEDGER_DIR, diagnoser=diagnoser
+            service.spec_for(Surface(surface), size, seed),
+            ledger_dir=LEDGER_DIR,
+            diagnoser=diagnoser,
         )
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc

@@ -14,11 +14,13 @@ from datetime import datetime, timezone
 from typing import Any
 
 from ..domain.decision import Intervention
+from ..domain.events import Surface
 from ..domain.money import Money
 from ..domain.outcome import OutcomeState
 from ..eval.harness import run_batch
 from ..eval.metrics import ArmResult, BatchReport
 from ..eval.sensitivity import run_sensitivity
+from ..kernel.diagnose import rules
 from ..kernel.policy import PolicyEngine
 from ..ledger import Ledger
 from ..synth.generator import BatchSpec, generate
@@ -36,6 +38,7 @@ class Run:
     ledger: Ledger
     created_at: datetime
     amount_at_risk_paise: int
+    rules_resolved: float = 0.0
     _by_event: dict[str, Any] = field(default_factory=dict)
 
 
@@ -65,20 +68,34 @@ class RunStore:
         return list(reversed(self._order))
 
 
+def spec_for(surface: Surface, size: int, seed: int) -> BatchSpec:
+    """A mandate book fails on a billing date, not across days of checkout
+    traffic, so the arrival window differs by surface."""
+    return BatchSpec(
+        size=size,
+        seed=seed,
+        surface=surface,
+        window_hours=48 if surface is Surface.SUBSCRIPTIONS else 72,
+    )
+
+
 def execute(spec: BatchSpec, *, ledger_dir, diagnoser=None) -> Run:
     if not 1 <= spec.size <= MAX_BATCH:
         raise ValueError(f"batch size must be between 1 and {MAX_BATCH}")
 
-    run_id = f"run_{spec.seed}_{spec.size}"
+    run_id = f"run_{spec.surface.value}_{spec.seed}_{spec.size}"
     path = ledger_dir / f"{run_id}.jsonl"
     if path.exists():
         path.unlink()
 
     ledger = Ledger(path, run_id=run_id)
     report = run_batch(spec, engine=PolicyEngine(), diagnoser=diagnoser, ledger=ledger)
-    at_risk = sum(c.event.amount.paise for c in generate(spec))
+    cases = generate(spec)
+    at_risk = sum(c.event.amount.paise for c in cases)
+    resolved = sum(rules.diagnose(c.event) is not None for c in cases) / max(1, len(cases))
 
     return Run(
+        rules_resolved=resolved,
         run_id=run_id,
         spec=spec,
         report=report,
@@ -97,6 +114,14 @@ def arm_summary(report: BatchReport, arm: ArmResult) -> dict[str, Any]:
     return {
         "arm": arm.arm.value,
         "gross_paise": arm.gross_recovered_paise,
+        "net_paise": report.net_at(arm, 0),
+        "discretionary_contacts": arm.discretionary_contacts,
+        "mandatory_notices": arm.mandatory_notices,
+        "escalations": sum(
+            1
+            for r in arm.per_case
+            if any(a.intervention is Intervention.ESCALATE_HUMAN for a in r.actions)
+        ),
         "incremental_paise": report.incremental_paise(arm),
         "cost_paise": arm.direct_cost_paise,
         "wasted_paise": arm.wasted_paise,
@@ -124,8 +149,10 @@ def run_summary(run: Run) -> dict[str, Any]:
 
     return {
         "run_id": run.run_id,
+        "surface": run.spec.surface.value,
         "seed": run.spec.seed,
         "size": run.spec.size,
+        "rules_resolve": run.rules_resolved,
         "created_at": run.created_at.isoformat(),
         "amount_at_risk_paise": run.amount_at_risk_paise,
         "arms": [
