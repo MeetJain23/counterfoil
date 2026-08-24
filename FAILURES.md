@@ -374,3 +374,97 @@ given no authority.
 close to worthless. The single most useful thing measured this week was not
 88.6%, it was the per-variant breakdown that turned one number into a specific
 sentence in a specific file that I had written myself.
+
+---
+
+## 007: Adding a surface silently rewrote every published payments number
+
+**Date:** 2026-08-24 · **Area:** synthetic generator
+
+**Expected:** Adding subscriptions is additive. The payments surface has its
+own cause mix, its own behaviour table and its own seeds, so nothing about it
+should move.
+
+**What happened:** Every payments batch changed. Same seed, different cases,
+different amounts, different customers, different outcomes.
+
+The generator draws from one shared random stream. Restructuring the loop to
+support two surfaces moved the `context` dictionary construction ahead of the
+`Customer` construction, so two `_weighted_choice` calls now happened before
+three `rng.randrange` calls instead of after. That is enough. Every figure in
+the README, every fixture fingerprint and every sensitivity result was keyed to
+a stream that no longer existed.
+
+Nothing failed loudly. The suite went green except for two tests, and those two
+were the ones asserting the agent *loses* under a handicap: the loss had
+quietly become a win.
+
+**Cost:** Twenty minutes, because those two tests existed. Without them this
+would have shipped, and the published numbers would have been unreproducible
+from the published code with nothing to indicate why.
+
+**Fix:** The draw order is restored and now carries a comment saying it is
+load-bearing and must not be rearranged. More usefully, the batch is
+fingerprinted: `test_generator_stability.py` hashes 200 events across two seeds
+and fails if either moves. A deliberate change to the generator now means
+updating a constant and regenerating the figures, which is a decision someone
+has to make on purpose rather than a side effect they never see.
+
+**What it taught us:** the test I nearly deleted as redundant is the one that
+caught this. `test_the_win_is_a_timing_win_and_we_say_so` asserts a *negative*
+result, that the agent loses when timing stops mattering, and it looked like an
+oddly specific thing to lock down. Asserting the shape of a result, including
+the parts that are unflattering, catches classes of error that asserting
+success cannot.
+
+---
+
+## 008: Complying with the mandate rules costs Rs 76,716, and we are reporting it
+
+**Date:** 2026-08-24 · **Area:** subscriptions surface
+
+**Expected:** The subscriptions surface would repeat the payments result. The
+agent times its retries around salary dates, the naive arm hammers the mandate
+on a fixed schedule, the agent wins on money and on restraint.
+
+**What happened:** The naive arm won on money, by a lot.
+
+```
+                incremental   discretionary   notices   actions   breaches
+naive           Rs 5,03,748             359         0      3246       5015
+agent           Rs 4,27,032             404       614      1741          0
+```
+
+The mechanism is not subtle once measured. NPCI e-mandate rules require the
+customer to be notified before a recurring debit is presented, and the policy
+engine enforces a 24 hour notice period. So the agent sends a notice and cannot
+present until a day later. The naive arm presents immediately and again every
+day after, and simply does not send the notice: 2,887 pre-debit notice breaches
+across the batch.
+
+More presentations inside the same window means more recoveries. The agent gets
+two shots where the naive arm takes four. That is the whole Rs 76,716.
+
+**Cost:** None. This is the system working.
+
+**Fix:** None, and that is the point. The obvious moves were to shorten the
+notice period, or exempt the first retry, or quietly drop the clause on the
+grounds that the eval looks better without it. All three amount to deciding
+that a rule is optional when it is expensive, which is the exact failure the
+policy engine exists to prevent.
+
+What changed instead is the accounting. A pre-debit notice was being counted as
+a customer contact, which made the compliant arm look noisier than the one
+breaking the rule: 1,018 contacts against 359. Legally required notices are now
+tracked separately from discretionary ones, and the break-even calculation uses
+only the discretionary count. On the corrected numbers the two arms send
+comparable discretionary messages, 404 against 359, and the agent additionally
+sends 614 notices it is obliged to send.
+
+**What it taught us:** compliance has a price and it is measurable, which is
+more useful than pretending it is free. The honest headline for this surface is
+not that Counterfoil recovers more. It is that an ungoverned agent recovers
+Rs 76,716 more by committing 5,015 policy breaches, 2,887 of them regulatory,
+and that a merchant cannot bank that money because it arrives attached to a
+compliance finding. Reporting the loss and naming what bought it is a stronger
+claim than a win would have been.

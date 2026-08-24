@@ -253,15 +253,132 @@ INTERVENTION_COST_PAISE: dict[str, int] = {
     "send_payment_link": 18,
     "request_updated_instrument": 18,
     "mandate_reauth": 45,
+    "pre_debit_notice": 12,
     "invoice_reminder": 18,
     "escalate_human": 4000,   # a human minute is the most expensive thing here
     "no_action": 0,
 }
 
+# --------------------------------------------------------------------------- #
+# Subscriptions                                                                #
+# --------------------------------------------------------------------------- #
+#
+# A recurring mandate fails differently from a one-off payment, and the
+# difference is almost entirely about calendars.
+#
+# A card decline is a moment. A mandate failure is a position in a month: the
+# debit lands on the 28th, the salary lands on the 1st, and the single most
+# effective intervention available is to wait four days. That makes the
+# subscriptions surface the sharpest possible test of the timing thesis, since
+# an agent that retries on a fixed backoff and an agent that retries on a
+# payday calendar will diverge enormously on the same customers.
+
+#: Subscription behaviour. Spontaneous recovery is lower than on payments
+#: because nobody re-runs a failed autopay themselves; it recovers when the
+#: next cycle succeeds or not at all.
+SUBSCRIPTION_BEHAVIOUR: dict[RootCause, CauseBehaviour] = {
+    # The classic: the debit landed before the salary did.
+    RootCause.MANDATE_BALANCE_LOW: CauseBehaviour(
+        spontaneous=0.11, retry_success=0.63, retry_ripens_after_hours=72.0,
+        alt_rail_success=0.18, nudge_lift=0.17,
+    ),
+    RootCause.INSUFFICIENT_FUNDS: CauseBehaviour(
+        spontaneous=0.13, retry_success=0.57, retry_ripens_after_hours=72.0,
+        alt_rail_success=0.20, nudge_lift=0.16,
+    ),
+    RootCause.BANK_DOWNTIME: CauseBehaviour(
+        spontaneous=0.21, retry_success=0.74, retry_ripens_after_hours=4.0,
+        alt_rail_success=0.44, nudge_lift=0.04,
+    ),
+    RootCause.TECHNICAL_GATEWAY: CauseBehaviour(
+        spontaneous=0.26, retry_success=0.70, retry_ripens_after_hours=1.0,
+        alt_rail_success=0.48, nudge_lift=0.05,
+    ),
+    # --- terminal: the mandate itself is gone ---
+    # The customer revoked it at their bank. No retry can succeed, ever, and
+    # retrying anyway is how a cancelled subscription becomes a complaint.
+    RootCause.MANDATE_REVOKED: CauseBehaviour(
+        spontaneous=0.02, retry_success=0.0, retry_ripens_after_hours=0.0,
+        alt_rail_success=0.21, nudge_lift=0.33, terminal=True,
+    ),
+    RootCause.EXPIRED_INSTRUMENT: CauseBehaviour(
+        spontaneous=0.04, retry_success=0.0, retry_ripens_after_hours=0.0,
+        alt_rail_success=0.29, nudge_lift=0.31, terminal=True,
+    ),
+}
+
+SUBSCRIPTION_CAUSE_MIX: dict[RootCause, float] = {
+    RootCause.MANDATE_BALANCE_LOW: 0.34,
+    RootCause.INSUFFICIENT_FUNDS: 0.16,
+    RootCause.MANDATE_REVOKED: 0.15,
+    RootCause.BANK_DOWNTIME: 0.13,
+    RootCause.EXPIRED_INSTRUMENT: 0.12,
+    RootCause.TECHNICAL_GATEWAY: 0.10,
+}
+
+SUBSCRIPTION_SIGNALS: dict[RootCause, SignalTemplate] = {
+    RootCause.MANDATE_BALANCE_LOW: SignalTemplate(
+        "BAD_REQUEST_ERROR", "mandate_insufficient_balance", "issuer",
+        "payment_authorization",
+        ("The account did not have sufficient balance on the debit date.",),
+    ),
+    RootCause.INSUFFICIENT_FUNDS: SignalTemplate(
+        "BAD_REQUEST_ERROR", "insufficient_funds", "issuer", "payment_authorization",
+        ("Your account does not have sufficient balance to complete this transaction.",),
+    ),
+    RootCause.MANDATE_REVOKED: SignalTemplate(
+        "BAD_REQUEST_ERROR", "mandate_revoked", "customer", "payment_authorization",
+        ("The mandate was cancelled by the customer at their bank.",),
+    ),
+    RootCause.EXPIRED_INSTRUMENT: SignalTemplate(
+        "BAD_REQUEST_ERROR", "card_expired", "issuer", "payment_authentication",
+        ("The card registered against this mandate has expired.",),
+    ),
+    RootCause.BANK_DOWNTIME: SignalTemplate(
+        "GATEWAY_ERROR", "bank_technical_error", "bank", "payment_authorization",
+        ("The sponsor bank could not process the debit at this time.",),
+    ),
+    RootCause.TECHNICAL_GATEWAY: SignalTemplate(
+        "GATEWAY_ERROR", "gateway_technical_error", "gateway", "payment_initiation",
+        ("The recurring debit could not be presented.",),
+    ),
+}
+
+#: Generic text for mandate failures, where the reason code says nothing useful.
+SUBSCRIPTION_AMBIGUOUS: dict[RootCause, tuple[str, ...]] = {
+    RootCause.MANDATE_BALANCE_LOW: (
+        "The scheduled debit was returned unpaid by the account holder's bank.",
+        "Auto debit presentation was rejected on the due date.",
+    ),
+    RootCause.MANDATE_REVOKED: (
+        "The standing instruction is no longer active at the bank.",
+        "This registration cannot be presented for debit any more.",
+    ),
+    RootCause.BANK_DOWNTIME: (
+        "The sponsor bank did not respond to the debit presentation.",
+    ),
+    RootCause.TECHNICAL_GATEWAY: (
+        "The recurring collection could not be completed this cycle.",
+    ),
+}
+
+
 SURFACE_MIX: dict[Surface, dict[RootCause, float]] = {
     Surface.PAYMENTS: PAYMENT_CAUSE_MIX,
+    Surface.SUBSCRIPTIONS: SUBSCRIPTION_CAUSE_MIX,
 }
 
 SURFACE_BEHAVIOUR: dict[Surface, dict[RootCause, CauseBehaviour]] = {
     Surface.PAYMENTS: PAYMENT_BEHAVIOUR,
+    Surface.SUBSCRIPTIONS: SUBSCRIPTION_BEHAVIOUR,
+}
+
+SURFACE_SIGNALS: dict[Surface, dict[RootCause, SignalTemplate]] = {
+    Surface.PAYMENTS: CLEAR_SIGNALS,
+    Surface.SUBSCRIPTIONS: SUBSCRIPTION_SIGNALS,
+}
+
+SURFACE_AMBIGUOUS: dict[Surface, dict[RootCause, tuple[str, ...]]] = {
+    Surface.PAYMENTS: AMBIGUOUS_DESCRIPTIONS,
+    Surface.SUBSCRIPTIONS: SUBSCRIPTION_AMBIGUOUS,
 }

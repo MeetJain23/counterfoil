@@ -45,6 +45,12 @@ class LatentCase:
     #: True when the provider gave a generic code and prose instead of a
     #: resolvable reason. These are the cases a rule table cannot close.
     ambiguous: bool
+    #: When money actually arrives in this customer's account, in hours from
+    #: the failure. Set on subscriptions, where a failed debit is not a moment
+    #: but a position in a month: the charge lands on the 28th and the salary
+    #: on the 1st. Retrying before this is close to worthless no matter how
+    #: many attempts you spend, and retrying just after it is close to free.
+    ripens_after_hours: float | None = None
 
     @property
     def event_id(self) -> str:
@@ -72,18 +78,21 @@ def _amount_paise(rng: random.Random) -> int:
     return rupees * 100
 
 
-def _signals(rng: random.Random, cause: RootCause, ambiguous: bool) -> tuple[dict[str, str], bool]:
+def _signals(
+    rng: random.Random, cause: RootCause, ambiguous: bool, surface: Surface
+) -> tuple[dict[str, str], bool]:
     """Build the provider payload the diagnoser is allowed to read."""
-    if ambiguous and cause in AMBIGUOUS_DESCRIPTIONS:
+    vague = profiles.SURFACE_AMBIGUOUS[surface]
+    if ambiguous and cause in vague:
         return {
             "error_code": "BAD_REQUEST_ERROR",
             "error_reason": "payment_failed",
             "error_source": "gateway",
             "error_step": "payment_authorization",
-            "error_description": rng.choice(AMBIGUOUS_DESCRIPTIONS[cause]),
+            "error_description": rng.choice(vague[cause]),
         }, True
 
-    template = CLEAR_SIGNALS[cause]
+    template = profiles.SURFACE_SIGNALS[surface][cause]
     return {
         "error_code": template.error_code,
         "error_reason": template.error_reason,
@@ -97,15 +106,46 @@ def _method(rng: random.Random) -> str:
     return _weighted_choice(rng, {"upi": 0.46, "card": 0.31, "netbanking": 0.15, "wallet": 0.08})
 
 
+#: Recurring plans are priced, not sampled: a subscription book is a handful of
+#: tiers repeated thousands of times, not a lognormal spread.
+PLAN_PRICES_PAISE: dict[int, float] = {
+    9900: 0.24,      # Rs 99
+    19900: 0.21,     # Rs 199
+    49900: 0.19,     # Rs 499
+    99900: 0.16,     # Rs 999
+    149900: 0.11,    # Rs 1,499
+    299900: 0.06,    # Rs 2,999
+    599900: 0.03,    # Rs 5,999
+}
+
+#: Balance-driven causes ripen when money arrives, not after a fixed backoff.
+BALANCE_CAUSES = frozenset({RootCause.MANDATE_BALANCE_LOW, RootCause.INSUFFICIENT_FUNDS})
+
+
+def _hours_until_payday(rng: random.Random) -> float:
+    """How long until this customer's account is funded again.
+
+    Indian salary credits cluster in the first few days of the month, and
+    mandate debits are commonly set for month end. Most of these customers are
+    therefore days rather than hours from being able to pay, and a small tail
+    is much longer: contract workers, delayed payroll, a genuinely empty
+    account.
+    """
+    if rng.random() < 0.82:
+        return rng.uniform(18, 120)      # under a week: the ordinary case
+    return rng.uniform(120, 500)         # up to three weeks
+
+
 def generate(spec: BatchSpec) -> list[LatentCase]:
     """Deterministic for a given (size, seed, surface). Same inputs, same batch."""
-    if spec.surface is not Surface.PAYMENTS:
+    if spec.surface not in profiles.SURFACE_MIX:
         raise NotImplementedError(
             f"{spec.surface.value} generation lands with its surface adapter"
         )
 
     rng = random.Random(spec.seed)
     mix = profiles.SURFACE_MIX[spec.surface]
+    subscriptions = spec.surface is Surface.SUBSCRIPTIONS
     cases: list[LatentCase] = []
 
     for i in range(spec.size):
@@ -115,33 +155,66 @@ def generate(spec: BatchSpec) -> list[LatentCase]:
         )[0]
 
         ambiguous_roll = rng.random() < AMBIGUOUS_RATE
-        signals, ambiguous = _signals(rng, cause, ambiguous_roll)
-        signals["method"] = _method(rng)
+        signals, ambiguous = _signals(rng, cause, ambiguous_roll, spec.surface)
+        signals["method"] = "emandate" if subscriptions else _method(rng)
 
         occurred_at = spec.starts_at + timedelta(
             seconds=rng.randrange(spec.window_hours * 3600)
         )
 
-        event = RiskEvent(
-            event_id=f"evt_{spec.seed}_{i:05d}",
-            surface=spec.surface,
-            kind=RiskKind.PAYMENT_FAILED,
-            occurred_at=occurred_at,
-            amount=Money(_amount_paise(rng)),
-            customer=Customer(
-                ref=f"cus_{rng.randrange(10**9):09d}",
-                phone_last4=f"{rng.randrange(10000):04d}",
-                email_domain=rng.choice(EMAIL_DOMAINS),
-                segment=segment,
-            ),
-            provider_signals=signals,
-            context={
+        # Draw order below is load-bearing and must not be rearranged:
+        # amount, then customer, then context. Every published figure is keyed
+        # to a seed, so reordering these calls silently produces a different
+        # batch for the same seed and quietly invalidates every number in the
+        # README. Adding the subscriptions surface did exactly that once
+        # already; see FAILURES.md 007.
+        amount = Money(
+            _weighted_choice(rng, PLAN_PRICES_PAISE)  # type: ignore[arg-type]
+            if subscriptions
+            else _amount_paise(rng)
+        )
+
+        customer = Customer(
+            ref=f"cus_{rng.randrange(10**9):09d}",
+            phone_last4=f"{rng.randrange(10000):04d}",
+            email_domain=rng.choice(EMAIL_DOMAINS),
+            segment=segment,
+        )
+
+        if subscriptions:
+            kind = RiskKind.MANDATE_CHARGE_FAILED
+            context = {
+                # A mandate charge is presented by us, not attempted by the
+                # customer, so it always arrives on its first attempt.
+                "attempts_so_far": 0,
+                "contacts_last_7d": _weighted_choice(rng, {0: 0.93, 1: 0.06, 2: 0.01}),
+                "actions_taken": 0,
+                "cycle_number": rng.randrange(1, 30),
+                # A mandate that has paid twenty times and just failed is a
+                # different proposition from one failing on its second cycle.
+                "consecutive_failures": _weighted_choice(rng, {1: 0.79, 2: 0.16, 3: 0.05}),
+            }
+            ripens = _hours_until_payday(rng) if cause in BALANCE_CAUSES else None
+        else:
+            kind = RiskKind.PAYMENT_FAILED
+            context = {
                 # A minority of failures are already a second or third try by
                 # the customer before we ever see them.
                 "attempts_so_far": _weighted_choice(rng, {0: 0.78, 1: 0.16, 2: 0.06}),
                 "contacts_last_7d": _weighted_choice(rng, {0: 0.88, 1: 0.09, 2: 0.03}),
                 "actions_taken": 0,
-            },
+            }
+            ripens = None
+
+        event = RiskEvent(
+            event_id=f"evt_{spec.seed}_{i:05d}",
+            surface=spec.surface,
+            kind=kind,
+            occurred_at=occurred_at,
+            amount=amount,
+            customer=customer,
+            provider_signals=signals,
+            context=context,
         )
 
         cases.append(
@@ -152,6 +225,7 @@ def generate(spec: BatchSpec) -> list[LatentCase]:
                 u_spontaneous=rng.random(),
                 draws=tuple(rng.random() for _ in range(MAX_DRAWS)),
                 ambiguous=ambiguous,
+                ripens_after_hours=ripens,
             )
         )
 

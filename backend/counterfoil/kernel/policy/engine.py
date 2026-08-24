@@ -28,7 +28,7 @@ from ...domain.decision import (
     Proposal,
 )
 from ...domain.diagnosis import Diagnosis, DiagnosisPath, RootCause
-from ...domain.events import RiskEvent
+from ...domain.events import RiskEvent, Surface
 
 IST = timezone(timedelta(hours=5, minutes=30))
 
@@ -176,6 +176,50 @@ class PolicyEngine:
             f"channel {pr.channel.value} " + ("permitted" if ok else f"not in {sorted(allowed)}"),
         )
 
+    def _c_pre_debit_notice(self, ev, dx, pr) -> ClauseEval | None:
+        """A recurring debit may not be presented without prior notice.
+
+        The strongest clause in the file, because it is the only one that is
+        not a business preference. Everything else here trades recovery against
+        goodwill; this one is a rule the regulator wrote, and an agent that
+        breaks it costs the merchant more than the money it was chasing.
+        """
+        if ev.surface is not Surface.SUBSCRIPTIONS:
+            return None
+        if pr.intervention not in BILLABLE:
+            return None
+        if not self.cfg["subscriptions"].get("require_pre_debit_notice", True):
+            return None
+
+        required = int(self.cfg["subscriptions"]["pre_debit_notice_hours"])
+        notice_at = ev.context.get("pre_debit_notice_at")
+        if notice_at is None:
+            return ClauseEval(
+                "subscriptions.pre_debit_notice",
+                False,
+                f"no pre-debit notice sent; {required}h notice is required before "
+                "presenting a mandate charge",
+            )
+
+        when = pr.scheduled_for or ev.occurred_at
+        hours = (when - notice_at).total_seconds() / 3600.0
+        return ClauseEval(
+            "subscriptions.pre_debit_notice",
+            hours >= required,
+            f"notice sent {hours:.0f}h before this presentation, {required}h required",
+        )
+
+    def _c_consecutive_failure_stop(self, ev, dx, pr) -> ClauseEval | None:
+        if ev.surface is not Surface.SUBSCRIPTIONS or pr.intervention in ALWAYS_SAFE:
+            return None
+        cap = int(self.cfg["subscriptions"]["escalate_after_consecutive_failures"])
+        failures = int(ev.context.get("consecutive_failures", 0))
+        return ClauseEval(
+            "subscriptions.consecutive_failure_stop",
+            failures < cap,
+            f"{failures} consecutive failed cycles against a stop of {cap}",
+        )
+
     def _c_no_dunning_when_disputed(self, ev, dx, pr) -> ClauseEval | None:
         if not self.cfg["receivables"].get("block_dunning_when_disputed", True):
             return None
@@ -203,6 +247,8 @@ class PolicyEngine:
         "_c_quiet_hours",
         "_c_channel_allowed",
         "_c_no_dunning_when_disputed",
+        "_c_pre_debit_notice",
+        "_c_consecutive_failure_stop",
     )
 
     # ------------------------------------------------------------------ #

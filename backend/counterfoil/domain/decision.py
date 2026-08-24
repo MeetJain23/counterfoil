@@ -22,6 +22,7 @@ class Intervention(str, enum.Enum):
     SEND_PAYMENT_LINK = "send_payment_link"
     CUSTOMER_NUDGE = "customer_nudge"
     MANDATE_REAUTH = "mandate_reauth"
+    PRE_DEBIT_NOTICE = "pre_debit_notice"
     INVOICE_REMINDER = "invoice_reminder"
     ESCALATE_HUMAN = "escalate_human"
     NO_ACTION = "no_action"
@@ -35,7 +36,13 @@ CONTACTING: frozenset[Intervention] = frozenset({
     Intervention.CUSTOMER_NUDGE,
     Intervention.MANDATE_REAUTH,
     Intervention.INVOICE_REMINDER,
+    Intervention.PRE_DEBIT_NOTICE,
 })
+
+#: Telling a customer a recurring debit is coming is required before presenting
+#: it, so it is not discretionary contact in the way a reminder is. It still
+#: counts against quiet hours, because a 3am notice is not a notice.
+MANDATORY_NOTICE: frozenset[Intervention] = frozenset({Intervention.PRE_DEBIT_NOTICE})
 
 #: Interventions that spend money at the gateway when they run.
 BILLABLE: frozenset[Intervention] = frozenset({

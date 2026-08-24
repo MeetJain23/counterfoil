@@ -25,6 +25,7 @@ from counterfoil.domain.money import Money  # noqa: E402
 from counterfoil.eval import run_batch  # noqa: E402
 from counterfoil.eval.sensitivity import run_across_seeds, run_sensitivity  # noqa: E402
 from counterfoil.ledger import Ledger  # noqa: E402
+from counterfoil.domain.events import Surface  # noqa: E402
 from counterfoil.synth import BatchSpec  # noqa: E402
 
 RULE = "=" * 78
@@ -38,23 +39,29 @@ def headline(spec: BatchSpec, ledger: Ledger | None) -> None:
     report = run_batch(spec, ledger=ledger)
 
     print(RULE)
-    print(f"COUNTERFOIL  |  {spec.size} failed payments, seed {spec.seed}")
+    noun = "mandate charges" if spec.surface is Surface.SUBSCRIPTIONS else "failed payments"
+    print(f"COUNTERFOIL  |  {spec.size} {noun}, seed {spec.seed}")
     print(RULE)
 
     rows = (("control", report.control), ("naive", report.naive), ("agent", report.agent))
     print(f"{'arm':8s} {'gross':>13s} {'incremental':>13s} {'cost':>10s} "
-          f"{'recovered':>10s} {'caused':>7s} {'actions':>8s} {'contacts':>9s} {'breaches':>9s}")
+          f"{'recovered':>10s} {'caused':>7s} {'actions':>8s} {'msgs':>6s} {'notices':>8s} {'breaches':>9s}")
     for name, arm in rows:
         print(f"{name:8s} {rs(arm.gross_recovered_paise):>13s} "
               f"{rs(report.incremental_paise(arm)):>13s} {rs(arm.direct_cost_paise):>10s} "
               f"{arm.n_recovered:>10d} {arm.n_attributable:>7d} {arm.actions:>8d} "
-              f"{arm.contacts:>9d} {arm.total_violations:>9d}")
+              f"{arm.discretionary_contacts:>6d} {arm.mandatory_notices:>8d} "
+              f"{arm.total_violations:>9d}")
 
     lo, hi = report.bootstrap_incremental(report.agent)
     print()
     print(f"agent incremental recovery : Rs {rs(report.incremental_paise(report.agent))}")
     print(f"  95% CI (paired bootstrap): Rs {rs(lo)} to Rs {rs(hi)}")
-    print(f"  vs naive                 : Rs {rs(report.incremental_paise(report.agent) - report.incremental_paise(report.naive))} better")
+    delta = report.incremental_paise(report.agent) - report.incremental_paise(report.naive)
+    verdict = "ahead of" if delta >= 0 else "BEHIND"
+    print(f"  vs naive                 : Rs {rs(abs(delta))} {verdict} the ungoverned arm")
+    if delta < 0:
+        print(f"  ...which it bought with {report.naive.total_violations} policy breaches")
 
     be = report.break_even_contact_cost_paise()
     print()
@@ -63,7 +70,11 @@ def headline(spec: BatchSpec, ledger: Ledger | None) -> None:
         print("  The agent nets more than the naive arm before any goodwill cost is")
         print("  priced in at all, so the headline never depends on a churn estimate.")
     elif be is None:
-        print("break-even contact cost   : not reachable (the agent contacts more people)")
+        print("break-even contact cost   : not reachable on this surface")
+        print("  The agent sends more discretionary messages than the naive arm, so no")
+        print("  goodwill price makes restraint the cheaper option. Where the agent also")
+        print("  recovers less, that gap is what obeying the rules costs, and the breach")
+        print("  counts below are what the other arm spent to avoid paying it.")
     else:
         print(f"break-even contact cost   : Rs {be / 100:.2f} per unwanted message")
 
@@ -71,6 +82,13 @@ def headline(spec: BatchSpec, ledger: Ledger | None) -> None:
     print("what the naive arm broke to get its number:")
     for clause, n in report.naive.violations.most_common():
         print(f"    {n:5d}  {clause}")
+
+    if report.agent.mandatory_notices:
+        print()
+        print(f"required notices sent      : {report.agent.mandatory_notices}")
+        print("  Counted apart from discretionary messages. A pre-debit notice is")
+        print("  obligatory, so scoring it as customer contact would make the arm that")
+        print("  obeys the rule look noisier than the arm that skips it.")
 
     print()
     print("what the agent refused to do:")
@@ -186,9 +204,20 @@ def main() -> int:
     parser.add_argument("--quick", action="store_true", help="skip sensitivity and seeds")
     parser.add_argument("--model-contribution", action="store_true",
                         help="compare rules-only against rules plus model")
+    parser.add_argument("--surface", default="payments",
+                        choices=[s.value for s in Surface],
+                        help="which loss surface to run")
     args = parser.parse_args()
 
-    spec = BatchSpec(size=args.size, seed=args.seed)
+    surface = Surface(args.surface)
+    spec = BatchSpec(
+        size=args.size,
+        seed=args.seed,
+        surface=surface,
+        # A mandate book fails on a billing date, not across three days of
+        # checkout traffic, so the arrival window is tighter.
+        window_hours=48 if surface is Surface.SUBSCRIPTIONS else 72,
+    )
 
     ledger = None
     if args.audit:

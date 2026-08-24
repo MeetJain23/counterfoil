@@ -3,7 +3,7 @@
 # Nothing the model proposes runs unless a clause here permits it, and every
 # refusal below names itself in the audit ledger. Tuning recovery aggression
 # means editing this file, not the code.
-version: 1
+version: 2
 
 global:
   # Below this confidence we will not spend money or contact anyone on the
@@ -17,8 +17,10 @@ global:
 retry:
   max_attempts:
     payments: 3
-    subscriptions: 4                 # mandates legitimately retry on salary cycles
-    receivables: 0                   # an invoice is not a thing you retry
+    # Mandates legitimately retry across salary cycles, so they get one more.
+    subscriptions: 4
+    # An invoice is not a thing you retry.
+    receivables: 0
   min_backoff_minutes: 30
   # When the issuer or gateway is down, retrying immediately just burns attempts.
   bank_outage_hold_minutes: 90
@@ -32,6 +34,17 @@ contact:
   quiet_hours_start_ist: 21
   quiet_hours_end_ist: 9
   allowed_channels: [sms, email, whatsapp]
+
+subscriptions:
+  # NPCI e-mandate rules require the customer to be told before a recurring
+  # debit is presented. This is not a courtesy and it is not a tunable:
+  # presenting a mandate charge without notice is a compliance breach whether
+  # or not it would have succeeded.
+  require_pre_debit_notice: true
+  pre_debit_notice_hours: 24
+  # A mandate failing this many cycles in a row is not a collections problem
+  # any more. Stop presenting it and put it in front of a person.
+  escalate_after_consecutive_failures: 3
 
 receivables:
   # A disputed invoice is a support problem, not a collections problem.

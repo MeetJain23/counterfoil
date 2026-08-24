@@ -11,6 +11,7 @@ from __future__ import annotations
 from datetime import timedelta
 
 from ..domain.decision import Channel, Intervention, Proposal
+from ..domain.events import Surface
 from ..domain.outcome import Arm
 from ..kernel.policy import PolicyEngine
 from ..kernel.runner import CaseResult, run_case
@@ -26,11 +27,28 @@ NAIVE_PLAN = (
     (Intervention.CUSTOMER_NUDGE, 1.5, Channel.SMS),
 )
 
+#: The same instinct applied to mandates. Slower, because a daily presentation
+#: is what a naive scheduler does with a recurring charge, and with no notice
+#: sent first because nothing in "retry until it works" knows that a regulator
+#: requires one.
+NAIVE_MANDATE_PLAN = (
+    (Intervention.RETRY_SAME_RAIL, 2.0, Channel.NONE),
+    (Intervention.RETRY_SAME_RAIL, 26.0, Channel.NONE),
+    (Intervention.RETRY_SAME_RAIL, 50.0, Channel.NONE),
+    (Intervention.RETRY_SAME_RAIL, 74.0, Channel.NONE),
+    (Intervention.CUSTOMER_NUDGE, 98.0, Channel.SMS),
+)
+
 
 def _naive_plan(event, diagnosis, step):
-    if step >= len(NAIVE_PLAN):
+    plan = (
+        NAIVE_MANDATE_PLAN
+        if event.surface is Surface.SUBSCRIPTIONS
+        else NAIVE_PLAN
+    )
+    if step >= len(plan):
         return None
-    intervention, after_hours, channel = NAIVE_PLAN[step]
+    intervention, after_hours, channel = plan[step]
     return Proposal(
         intervention=intervention,
         scheduled_for=event.occurred_at + timedelta(hours=after_hours),
@@ -54,7 +72,7 @@ def run_naive(case: LatentCase, *, engine: PolicyEngine, ledger: Ledger | None =
         enforce=False,
         plan=_naive_plan,
         ledger=ledger,
-        max_steps=len(NAIVE_PLAN),
+        max_steps=max(len(NAIVE_PLAN), len(NAIVE_MANDATE_PLAN)),
     )
 
 

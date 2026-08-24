@@ -19,7 +19,7 @@ from datetime import timedelta
 
 from ..domain.decision import Channel, Intervention, Proposal
 from ..domain.diagnosis import Diagnosis, DiagnosisPath, RootCause
-from ..domain.events import RiskEvent
+from ..domain.events import RiskEvent, Surface
 
 
 @dataclass(frozen=True)
@@ -87,16 +87,81 @@ PLAYBOOKS: dict[RootCause, tuple[Step, ...]] = {
     ),
 }
 
+#: Subscriptions are the same kernel with a different calendar.
+#:
+#: Two things make a mandate failure unlike a card failure. The debit is
+#: presented by us rather than attempted by the customer, so nothing happens
+#: unless we act. And the money arrives on a salary date, not after a backoff,
+#: so every plan below waits days rather than hours and opens with the notice
+#: the regulator requires before a debit may be presented again.
+SUBSCRIPTION_PLAYBOOKS: dict[RootCause, tuple[Step, ...]] = {
+    # The debit landed before the salary did. Telling them it is coming is both
+    # legally required and the single most effective thing available: a customer
+    # who knows a Rs 499 debit lands tomorrow will often fund the account.
+    RootCause.MANDATE_BALANCE_LOW: (
+        Step(Intervention.PRE_DEBIT_NOTICE, 2, Channel.SMS,
+             why="required before re-presenting, and it prompts them to top up"),
+        Step(Intervention.RETRY_SAME_RAIL, 74,
+             why="three days out, past the salary date for most customers"),
+        Step(Intervention.CUSTOMER_NUDGE, 122, Channel.SMS,
+             why="two failed cycles; ask before presenting a third time"),
+        Step(Intervention.RETRY_SAME_RAIL, 170,
+             why="a week out, across a second credit opportunity"),
+    ),
+    RootCause.INSUFFICIENT_FUNDS: (
+        Step(Intervention.PRE_DEBIT_NOTICE, 2, Channel.SMS,
+             why="required before re-presenting, and it prompts them to top up"),
+        Step(Intervention.RETRY_SAME_RAIL, 74, why="give the balance three days"),
+        Step(Intervention.CUSTOMER_NUDGE, 122, Channel.EMAIL, why="low-cost reminder"),
+        Step(Intervention.RETRY_SAME_RAIL, 170, why="final presentation"),
+    ),
+    RootCause.BANK_DOWNTIME: (
+        Step(Intervention.PRE_DEBIT_NOTICE, 1, Channel.SMS, why="notice before re-presenting"),
+        Step(Intervention.RETRY_SAME_RAIL, 26, why="sponsor bank should have recovered"),
+        Step(Intervention.RETRY_SAME_RAIL, 50, why="second presentation a day later"),
+    ),
+    RootCause.TECHNICAL_GATEWAY: (
+        Step(Intervention.PRE_DEBIT_NOTICE, 1, Channel.SMS, why="notice before re-presenting"),
+        Step(Intervention.RETRY_SAME_RAIL, 26, why="present again once the processor is healthy"),
+    ),
+    # --- terminal: the mandate itself is gone, and presenting it again is both
+    # useless and, on a revoked mandate, the thing that generates a complaint.
+    RootCause.MANDATE_REVOKED: (
+        Step(Intervention.MANDATE_REAUTH, 2, Channel.SMS,
+             why="the standing instruction is cancelled; only a new one can work"),
+        Step(Intervention.ESCALATE_HUMAN, 96,
+             why="no re-authorisation after four days; a person should decide"),
+    ),
+    RootCause.EXPIRED_INSTRUMENT: (
+        Step(Intervention.REQUEST_UPDATED_INSTRUMENT, 2, Channel.SMS,
+             why="the card behind the mandate is dead; only a new one can work"),
+        Step(Intervention.CUSTOMER_NUDGE, 72, Channel.EMAIL, why="single follow-up"),
+    ),
+}
+
+BY_SURFACE: dict[Surface, dict[RootCause, tuple[Step, ...]]] = {
+    Surface.PAYMENTS: PLAYBOOKS,
+    Surface.SUBSCRIPTIONS: SUBSCRIPTION_PLAYBOOKS,
+}
+
 #: When we do not know, we do not act. A human sees it instead.
 UNKNOWN_PLAYBOOK: tuple[Step, ...] = (
     Step(Intervention.ESCALATE_HUMAN, 2, why="no confident diagnosis; a person should look"),
 )
 
 
-def playbook_for(diagnosis: Diagnosis) -> tuple[Step, ...]:
+def playbook_for(event: RiskEvent, diagnosis: Diagnosis) -> tuple[Step, ...]:
+    """The plan for this cause on this surface.
+
+    Keyed on both, because the same cause wants opposite handling depending on
+    where it happened. Insufficient funds on a checkout is a 26 hour retry; on
+    a mandate it is a notice, then three days, then a salary date. Collapsing
+    them onto one table would mean one of the two surfaces is always wrong.
+    """
     if diagnosis.path is DiagnosisPath.DEGRADED or diagnosis.cause is RootCause.UNKNOWN:
         return UNKNOWN_PLAYBOOK
-    return PLAYBOOKS.get(diagnosis.cause, UNKNOWN_PLAYBOOK)
+    table = BY_SURFACE.get(event.surface, PLAYBOOKS)
+    return table.get(diagnosis.cause, UNKNOWN_PLAYBOOK)
 
 
 def next_proposal(
@@ -108,7 +173,7 @@ def next_proposal(
     sense for this cause and further attempts would be noise, which is exactly
     when most recovery tooling starts sending a fourth message.
     """
-    steps = playbook_for(diagnosis)
+    steps = playbook_for(event, diagnosis)
     if step_index >= len(steps):
         return None
 

@@ -21,7 +21,7 @@ from ..domain.decision import CONTACTING, Channel, Intervention
 from ..domain.money import Money
 from ..domain.outcome import Arm, Outcome, OutcomeState
 from .generator import MAX_DRAWS, LatentCase
-from .profiles import INTERVENTION_COST_PAISE, PAYMENT_BEHAVIOUR, SEGMENTS
+from .profiles import INTERVENTION_COST_PAISE, SEGMENTS, SURFACE_BEHAVIOUR
 
 _SEGMENT_BY_NAME = {s.name: s for s in SEGMENTS}
 
@@ -43,6 +43,17 @@ INTERVENTION_FIT: dict[Intervention, tuple[frozenset, float]] = {
     Intervention.SEND_PAYMENT_LINK: (
         frozenset({"authentication_dropoff", "customer_abandoned"}),
         1.45,
+    ),
+    # Telling somebody a debit is coming tomorrow is the one message that
+    # reliably makes them fund the account, which is why the regulator made it
+    # mandatory and why it is worth more than a reminder after the fact.
+    Intervention.PRE_DEBIT_NOTICE: (
+        frozenset({"mandate_balance_low", "insufficient_funds"}),
+        1.70,
+    ),
+    Intervention.MANDATE_REAUTH: (
+        frozenset({"mandate_revoked", "expired_instrument"}),
+        1.55,
     ),
 }
 
@@ -94,10 +105,26 @@ def _ripeness(ripens_after_hours: float, delay_hours: float) -> float:
     return 0.15 + 0.85 * min(1.0, max(0.0, delay_hours) / ripens_after_hours)
 
 
+def behaviour_for(case: LatentCase):
+    return SURFACE_BEHAVIOUR[case.event.surface][case.true_cause]
+
+
+def ripens_after(case: LatentCase) -> float:
+    """When this case becomes worth retrying.
+
+    A per-case override beats the per-cause default, because on subscriptions
+    the answer is not "after N hours" but "after this particular customer gets
+    paid", and those differ by two weeks across a book.
+    """
+    if case.ripens_after_hours is not None:
+        return case.ripens_after_hours
+    return behaviour_for(case).retry_ripens_after_hours
+
+
 def _success_probability(
     case: LatentCase, action: TakenAction, contacts_before: int
 ) -> float:
-    behaviour = PAYMENT_BEHAVIOUR[case.true_cause]
+    behaviour = behaviour_for(case)
     segment = _SEGMENT_BY_NAME[case.segment]
     delay_hours = (action.at - case.event.occurred_at).total_seconds() / 3600.0
     iv = action.intervention
@@ -111,12 +138,10 @@ def _success_probability(
     if iv is Intervention.RETRY_SAME_RAIL:
         if behaviour.terminal:
             return 0.0
-        return behaviour.retry_success * _ripeness(
-            behaviour.retry_ripens_after_hours, delay_hours
-        )
+        return behaviour.retry_success * _ripeness(ripens_after(case), delay_hours)
 
     if iv is Intervention.RETRY_ALTERNATE_RAIL:
-        ripeness = _ripeness(behaviour.retry_ripens_after_hours, delay_hours)
+        ripeness = _ripeness(ripens_after(case), delay_hours)
         return behaviour.alt_rail_success * (0.55 + 0.45 * ripeness)
 
     if iv in CONTACTING:
@@ -130,7 +155,7 @@ def _success_probability(
 
 
 def spontaneous_probability(case: LatentCase) -> float:
-    behaviour = PAYMENT_BEHAVIOUR[case.true_cause]
+    behaviour = behaviour_for(case)
     segment = _SEGMENT_BY_NAME[case.segment]
     return min(0.95, behaviour.spontaneous * segment.self_serve)
 

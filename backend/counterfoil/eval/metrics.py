@@ -37,6 +37,10 @@ class ArmResult:
     wasted_paise: int = 0
     direct_cost_paise: int = 0
     contacts: int = 0
+    #: Contacts excluding legally required notices. This is the number that
+    #: means something when comparing a compliant arm with one that is not.
+    discretionary_contacts: int = 0
+    mandatory_notices: int = 0
     actions: int = 0
     llm_calls: int = 0
     violations: Counter = field(default_factory=Counter)
@@ -48,6 +52,8 @@ class ArmResult:
         self.per_case.append(r)
         self.actions += len(r.actions)
         self.contacts += r.contacts
+        self.discretionary_contacts += r.discretionary_contacts
+        self.mandatory_notices += r.mandatory_notices
         self.direct_cost_paise += r.direct_cost.paise
         self.llm_calls += r.llm_calls
         self.violations.update(r.violations)
@@ -99,7 +105,7 @@ class BatchReport:
         return (
             self.incremental_paise(arm)
             - arm.direct_cost_paise
-            - arm.contacts * contact_cost_paise
+            - arm.discretionary_contacts * contact_cost_paise
         )
 
     def sweep(
@@ -121,7 +127,7 @@ class BatchReport:
         means a reader can check that claim against their own churn data
         instead of taking ours.
         """
-        contact_gap = self.naive.contacts - self.agent.contacts
+        contact_gap = self.naive.discretionary_contacts - self.agent.discretionary_contacts
         if contact_gap <= 0:
             return None
         value_gap = (

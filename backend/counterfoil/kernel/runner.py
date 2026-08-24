@@ -16,7 +16,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
 
-from ..domain.decision import BILLABLE, CONTACTING, ClauseEval, Decision, Intervention, Proposal
+from ..domain.decision import (
+    BILLABLE,
+    CONTACTING,
+    MANDATORY_NOTICE,
+    ClauseEval,
+    Decision,
+    Intervention,
+    Proposal,
+)
 from ..domain.diagnosis import Diagnosis, DiagnosisPath, RootCause
 from ..domain.money import Money
 from ..domain.outcome import Arm, Outcome, OutcomeState
@@ -48,6 +56,9 @@ class CaseResult:
     #: Clauses that stopped the agent from acting. This is the agent's restraint
     #: made countable.
     refusals: list[str] = field(default_factory=list)
+    #: Contacts the regulator requires, which are not discretionary and must not
+    #: be compared against an arm that simply skips them.
+    mandatory_notices: int = 0
     llm_calls: int = 0
 
     @property
@@ -61,6 +72,16 @@ class CaseResult:
     @property
     def contacts(self) -> int:
         return self.outcome.contacts_made if self.outcome else 0
+
+    @property
+    def discretionary_contacts(self) -> int:
+        """Messages the merchant chose to send.
+
+        A pre-debit notice is not one. Counting it alongside a dunning reminder
+        makes a compliant arm look noisier than one that breaks the rule, which
+        is precisely backwards.
+        """
+        return max(0, self.contacts - self.mandatory_notices)
 
 
 def _diagnose(event, diagnoser) -> tuple[Diagnosis, int]:
@@ -200,6 +221,8 @@ def run_case(
         spent += action.cost_paise
         if action.intervention in CONTACTING:
             contacts += 1
+        if action.intervention in MANDATORY_NOTICE:
+            result.mandatory_notices += 1
         last_at = action.at
 
         landed, probability = attempt(case, action, step, contacts_before)
@@ -225,17 +248,21 @@ def run_case(
             closed_by = action.intervention
             break
 
-        working = replace(
-            working,
-            context={
-                **working.context,
-                "attempts_so_far": working.attempts_so_far
-                + (1 if action.intervention in BILLABLE else 0),
-                "contacts_last_7d": working.contacts_last_7d
-                + (1 if action.intervention in CONTACTING else 0),
-                "actions_taken": int(working.context.get("actions_taken", 0)) + 1,
-            },
-        )
+        updated = {
+            **working.context,
+            "attempts_so_far": working.attempts_so_far
+            + (1 if action.intervention in BILLABLE else 0),
+            "contacts_last_7d": working.contacts_last_7d
+            + (1 if action.intervention in CONTACTING else 0),
+            "actions_taken": int(working.context.get("actions_taken", 0)) + 1,
+        }
+        if action.intervention is Intervention.PRE_DEBIT_NOTICE:
+            # Records that notice was given, which is what unlocks presenting
+            # the mandate again. Written from the executed action rather than
+            # the proposal, so a notice that was deferred out of quiet hours
+            # moves the earliest lawful retry with it.
+            updated["pre_debit_notice_at"] = action.at
+        working = replace(working, context=updated)
 
     would_anyway = case.u_spontaneous < spontaneous_probability(case)
     recovered_now = closed_by is not None or would_anyway
