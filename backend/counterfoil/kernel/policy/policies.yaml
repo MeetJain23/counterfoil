@@ -35,7 +35,18 @@ contact:
   quiet_hours_end_ist: 9
   allowed_channels: [sms, email, whatsapp]
 
+payments:
+  # A person costs about Rs 800 of loaded time. Handing them a Rs 300 checkout
+  # failure loses money on the handoff alone, however the case then resolves.
+  escalation_min_value_paise: 200000        # Rs 2,000
+  escalations_per_100_invoices: 3
+
 subscriptions:
+  # A subscription is worth its monthly price, not its lifetime value, at the
+  # moment one charge fails. Escalating a Rs 99 plan to a human is a loss no
+  # matter what the human then achieves.
+  escalation_min_value_paise: 100000        # Rs 1,000
+  escalations_per_100_invoices: 3
   # NPCI e-mandate rules require the customer to be told before a recurring
   # debit is presented. This is not a courtesy and it is not a tunable:
   # presenting a mandate charge without notice is a compliance breach whether

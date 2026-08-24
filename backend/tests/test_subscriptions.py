@@ -210,7 +210,23 @@ def test_repeated_failed_cycles_stop_the_agent(engine):
     )
     assert not d.allowed
     assert "subscriptions.consecutive_failure_stop" in d.citation
-    # A human may still look at it.
+
+
+def test_a_small_plan_that_keeps_failing_stops_rather_than_reaching_a_person(engine):
+    """Stopping is the whole answer for a plan too small to be worth an analyst.
+
+    A person costs about Rs 800 of loaded time. Handing them a Rs 499
+    subscription loses money on the handoff before they do anything, so the
+    correct end state is no action at all rather than a queued review.
+    """
+    ev = mandate_event(context={"consecutive_failures": 3})
+    d = engine.evaluate(ev, dx(), Proposal(Intervention.ESCALATE_HUMAN))
+    assert not d.allowed
+    assert "escalation.min_value" in d.citation
+
+
+def test_a_plan_worth_a_persons_time_does_reach_one(engine):
+    ev = mandate_event(amount=Money(599900), context={"consecutive_failures": 3})
     assert engine.evaluate(ev, dx(), Proposal(Intervention.ESCALATE_HUMAN)).allowed
 
 
