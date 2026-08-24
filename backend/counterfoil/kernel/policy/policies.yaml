@@ -52,3 +52,18 @@ receivables:
   block_dunning_when_disputed: true
   reminder_min_gap_days: 3
   escalate_after_days_overdue: 45
+  # When a buyer has put a payment date in writing, chasing them before it
+  # arrives is the collections equivalent of asking twice. It does not move the
+  # money and it does spend the relationship. The date comes out of the model
+  # reading their reply, which is the one place a model output becomes a policy
+  # input rather than a label.
+  honour_promise_to_pay: true
+  promise_grace_hours: 24
+  # A person is the one resource here that does not scale. Putting a small
+  # invoice in front of one costs more than the invoice is worth, and doing
+  # it indiscriminately turns a recovery agent into a ticket router.
+  escalation_min_value_paise: 2500000       # Rs 25,000
+  # Reviews a collections team can actually work, per hundred overdue
+  # invoices. A real AR desk clears a single-digit percentage of the ledger
+  # by hand, and the agent has to choose which ones.
+  escalations_per_100_invoices: 8

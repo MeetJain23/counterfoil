@@ -18,6 +18,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 
 from ..domain.decision import CONTACTING, Channel, Intervention
+from ..domain.events import Surface
 from ..domain.money import Money
 from ..domain.outcome import Arm, Outcome, OutcomeState
 from .generator import MAX_DRAWS, LatentCase
@@ -28,8 +29,8 @@ _SEGMENT_BY_NAME = {s.name: s for s in SEGMENTS}
 #: Each additional message to the same customer lands with less force.
 CONTACT_FATIGUE = 0.55
 
-#: A human working the case. Effective, and by far the most expensive option,
-#: which is why the policy engine treats escalation as a last resort.
+#: Retained as the default inside CauseBehaviour rather than used directly:
+#: what a human achieves depends entirely on what they have been handed.
 ESCALATION_SUCCESS = 0.42
 
 #: Interventions that specifically address a broken instrument, and the causes
@@ -133,7 +134,7 @@ def _success_probability(
         return 0.0
 
     if iv is Intervention.ESCALATE_HUMAN:
-        return ESCALATION_SUCCESS * segment.responsiveness ** 0.5
+        return behaviour.escalation_success * segment.responsiveness ** 0.5
 
     if iv is Intervention.RETRY_SAME_RAIL:
         if behaviour.terminal:
@@ -149,6 +150,12 @@ def _success_probability(
         fit_causes, bonus = INTERVENTION_FIT.get(iv, (frozenset(), 1.0))
         if case.true_cause.value in fit_causes:
             p *= bonus
+        # On receivables a stated payment date changes what contact is worth.
+        # Chasing somebody who has already told you they will pay on the 15th
+        # does close to nothing on the 10th and is effective on the 16th, which
+        # is the opposite of how most collections tooling is scheduled.
+        if case.event.surface is Surface.RECEIVABLES and case.ripens_after_hours:
+            p *= _ripeness(case.ripens_after_hours, delay_hours)
         return p * (CONTACT_FATIGUE ** contacts_before)
 
     return 0.0

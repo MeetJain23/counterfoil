@@ -30,6 +30,12 @@ MAX_DRAWS = 12
 
 EMAIL_DOMAINS = ("gmail.com", "outlook.com", "yahoo.in", "rediffmail.com", "proton.me")
 
+#: B2B counterparties are companies, not consumers.
+BUSINESS_DOMAINS = (
+    "acmelogistics.in", "northbridge.co.in", "vertexretail.com",
+    "sundarammills.in", "clearpathtech.io", "meridianfoods.in",
+)
+
 
 @dataclass(frozen=True)
 class LatentCase:
@@ -121,6 +127,19 @@ PLAN_PRICES_PAISE: dict[int, float] = {
 #: Balance-driven causes ripen when money arrives, not after a fixed backoff.
 BALANCE_CAUSES = frozenset({RootCause.MANDATE_BALANCE_LOW, RootCause.INSUFFICIENT_FUNDS})
 
+#: B2B invoice sizes. Two orders of magnitude above consumer payments, which is
+#: why the value floor never bites here and the cost of a wrong move does.
+def _invoice_paise(rng: random.Random) -> int:
+    rupees = min(2_500_000, max(4_000, int(rng.lognormvariate(11.6, 1.05))))
+    return rupees * 100
+
+
+def _thread(rng: random.Random, cause: RootCause) -> tuple[str, bool]:
+    """What the buyer wrote back, and whether it is trying to manipulate us."""
+    if rng.random() < profiles.ADVERSARIAL_RATE:
+        return rng.choice(profiles.ADVERSARIAL_THREADS), True
+    return rng.choice(profiles.RECEIVABLES_THREADS[cause]), False
+
 
 def _hours_until_payday(rng: random.Random) -> float:
     """How long until this customer's account is funded again.
@@ -146,7 +165,11 @@ def generate(spec: BatchSpec) -> list[LatentCase]:
     rng = random.Random(spec.seed)
     mix = profiles.SURFACE_MIX[spec.surface]
     subscriptions = spec.surface is Surface.SUBSCRIPTIONS
+    receivables = spec.surface is Surface.RECEIVABLES
     cases: list[LatentCase] = []
+
+    if receivables:
+        return _generate_receivables(spec, rng, mix)
 
     for i in range(spec.size):
         cause: RootCause = _weighted_choice(rng, mix)  # type: ignore[assignment]
@@ -226,6 +249,76 @@ def generate(spec: BatchSpec) -> list[LatentCase]:
                 draws=tuple(rng.random() for _ in range(MAX_DRAWS)),
                 ambiguous=ambiguous,
                 ripens_after_hours=ripens,
+            )
+        )
+
+    return cases
+
+
+def _generate_receivables(spec: BatchSpec, rng: random.Random, mix: dict) -> list[LatentCase]:
+    """Overdue B2B invoices, where the signal is correspondence rather than codes.
+
+    Kept as its own function rather than a third branch in the main loop: the
+    field it produces barely overlap with the transactional surfaces, and the
+    main loop's draw order is load-bearing for the payments figures. A separate
+    stream cannot disturb it.
+    """
+    cases: list[LatentCase] = []
+
+    for i in range(spec.size):
+        cause: RootCause = _weighted_choice(rng, mix)  # type: ignore[assignment]
+        segment = rng.choices(
+            [s.name for s in SEGMENTS], weights=[s.weight for s in SEGMENTS], k=1
+        )[0]
+
+        amount = Money(_invoice_paise(rng))
+        thread, adversarial = _thread(rng, cause)
+        days_overdue = rng.randrange(1, 95)
+        occurred_at = spec.starts_at + timedelta(seconds=rng.randrange(spec.window_hours * 3600))
+
+        # A stated payment date is the one piece of information that should
+        # stop an agent chasing, so it is modelled explicitly: the money
+        # arrives then, and contact before then achieves close to nothing.
+        promised_in_hours = rng.uniform(24, 340) if cause is RootCause.PROMISE_TO_PAY else None
+
+        event = RiskEvent(
+            event_id=f"evt_{spec.seed}_{i:05d}",
+            surface=Surface.RECEIVABLES,
+            kind=RiskKind.INVOICE_OVERDUE,
+            occurred_at=occurred_at,
+            amount=amount,
+            customer=Customer(
+                ref=f"acct_{rng.randrange(10**6):06d}",
+                email_domain=rng.choice(BUSINESS_DOMAINS),
+                segment=segment,
+            ),
+            provider_signals={
+                # No error_reason anywhere: there is nothing for a rule table
+                # to match on, which is the point of this surface.
+                "invoice_number": f"INV-{spec.seed}-{i:05d}",
+                "days_overdue": str(days_overdue),
+                "payment_terms": rng.choice(("NET15", "NET30", "NET45", "NET60")),
+                "thread": thread,
+            },
+            context={
+                "attempts_so_far": 0,
+                "contacts_last_7d": _weighted_choice(rng, {0: 0.71, 1: 0.22, 2: 0.07}),
+                "actions_taken": 0,
+                "days_overdue": days_overdue,
+                "adversarial_thread": adversarial,
+            },
+        )
+
+        cases.append(
+            LatentCase(
+                event=event,
+                true_cause=cause,
+                segment=segment,
+                u_spontaneous=rng.random(),
+                draws=tuple(rng.random() for _ in range(MAX_DRAWS)),
+                # Every thread is ambiguous to a rule table by construction.
+                ambiguous=True,
+                ripens_after_hours=promised_in_hours,
             )
         )
 

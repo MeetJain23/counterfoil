@@ -30,6 +30,10 @@ class Step:
     after_hours: float
     channel: Channel = Channel.NONE
     why: str = ""
+    #: Schedule from the date the buyer promised rather than from the failure.
+    #: A promise of "the 15th" and a promise of "Friday" want the same follow-up
+    #: shape anchored to different days, and only the model knows which.
+    from_promise: bool = False
 
 
 #: The playbooks. Each is an ordered escalation, cheapest and least intrusive
@@ -139,9 +143,50 @@ SUBSCRIPTION_PLAYBOOKS: dict[RootCause, tuple[Step, ...]] = {
     ),
 }
 
+#: Receivables. Almost every plan here is a message or a person, because there
+#: is nothing to retry: an invoice does not fail, it waits.
+RECEIVABLE_PLAYBOOKS: dict[RootCause, tuple[Step, ...]] = {
+    # Stuck in their process. A reminder aimed at unblocking it is genuinely
+    # useful, and two is the most anyone should send.
+    RootCause.INVOICE_AWAITING_APPROVAL: (
+        Step(Intervention.INVOICE_REMINDER, 24, Channel.EMAIL,
+             why="it is in their queue; a nudge moves it along"),
+        Step(Intervention.INVOICE_REMINDER, 192, Channel.EMAIL,
+             why="a week on and still unapproved"),
+        Step(Intervention.ESCALATE_HUMAN, 384,
+             why="two weeks in their process; someone should call them"),
+    ),
+    # They told us when. The plan is to wait, then follow up once, and the
+    # policy engine enforces the waiting.
+    RootCause.PROMISE_TO_PAY: (
+        Step(Intervention.INVOICE_REMINDER, 24, Channel.EMAIL, from_promise=True,
+             why="a day past the date they gave; ask only if it did not arrive"),
+        Step(Intervention.INVOICE_REMINDER, 168, Channel.EMAIL, from_promise=True,
+             why="a week past a broken promise"),
+        Step(Intervention.ESCALATE_HUMAN, 336, from_promise=True,
+             why="the commitment was not kept twice; a person should take it"),
+    ),
+    # They intend to pay and cannot. Pressure is the wrong tool.
+    RootCause.INVOICE_CASHFLOW_DELAY: (
+        Step(Intervention.INVOICE_REMINDER, 48, Channel.EMAIL,
+             why="acknowledge and ask for a date they can commit to"),
+        Step(Intervention.INVOICE_REMINDER, 288, Channel.EMAIL,
+             why="second and final reminder before a human takes it"),
+        Step(Intervention.ESCALATE_HUMAN, 600,
+             why="this needs a payment plan, which is not an agent decision"),
+    ),
+    # Contested. Chasing converts a billing correction into a lost account, and
+    # the dunning clause blocks it anyway.
+    RootCause.INVOICE_DISPUTED: (
+        Step(Intervention.ESCALATE_HUMAN, 2,
+             why="a dispute is a support matter; stop collections and route it"),
+    ),
+}
+
 BY_SURFACE: dict[Surface, dict[RootCause, tuple[Step, ...]]] = {
     Surface.PAYMENTS: PLAYBOOKS,
     Surface.SUBSCRIPTIONS: SUBSCRIPTION_PLAYBOOKS,
+    Surface.RECEIVABLES: RECEIVABLE_PLAYBOOKS,
 }
 
 #: When we do not know, we do not act. A human sees it instead.
@@ -178,9 +223,19 @@ def next_proposal(
         return None
 
     step = steps[step_index]
+
+    anchor = event.occurred_at
+    if step.from_promise:
+        promised = diagnosis.evidence.get("promised_within_days")
+        if promised is not None:
+            try:
+                anchor = anchor + timedelta(days=int(promised))
+            except (TypeError, ValueError):
+                pass
+
     return Proposal(
         intervention=step.intervention,
-        scheduled_for=event.occurred_at + timedelta(hours=step.after_hours),
+        scheduled_for=anchor + timedelta(hours=step.after_hours),
         channel=step.channel,
         message_hint=step.why,
         params={"step": str(step_index + 1), "of": str(len(steps))},

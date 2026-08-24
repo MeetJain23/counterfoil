@@ -28,7 +28,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from ...domain.diagnosis import Diagnosis, DiagnosisPath, RootCause
-from ...domain.events import RiskEvent
+from ...domain.events import RiskEvent, Surface
 from ...llm.budget import Budget
 from ...llm.cache import CachedResponse, FixtureStore, fingerprint
 from ...llm.client import Answer, Ask, LLMClient, LLMError
@@ -84,11 +84,53 @@ PAYMENT_CAUSES: dict[RootCause, str] = {
     ),
 }
 
-_CAUSE_BY_VALUE = {c.value: c for c in PAYMENT_CAUSES}
+#: Receivables, where the model does nearly all the work.
+#:
+#: An overdue invoice has no error code. It has a reply from a person, and four
+#: replies that look similar in a dashboard demand opposite responses: chase the
+#: approver, wait for the date they gave you, negotiate, or stop chasing
+#: entirely and get a human onto the dispute. Separating those is a reading
+#: comprehension problem, which is the only honest reason to put a model in a
+#: payments system.
+RECEIVABLE_CAUSES: dict[RootCause, str] = {
+    RootCause.INVOICE_AWAITING_APPROVAL: (
+        "The buyer accepts the invoice and it is stuck in their internal "
+        "process: waiting on a sign-off, a purchase order number, a missing "
+        "document, or a scheduled payment run. They are not refusing."
+    ),
+    RootCause.PROMISE_TO_PAY: (
+        "The buyer has stated when they will pay, specifically enough to hold "
+        "them to it: a date, a named payment run, or a number of days. This is "
+        "different from a vague intention to pay eventually."
+    ),
+    RootCause.INVOICE_CASHFLOW_DELAY: (
+        "The buyer accepts the debt and is saying they cannot pay it yet, or "
+        "is asking to delay, split or reschedule. They are not disputing the "
+        "amount and they have not committed to a date."
+    ),
+    RootCause.INVOICE_DISPUTED: (
+        "The buyer contests the invoice itself: wrong quantity, wrong rate, "
+        "duplicate billing, or work they say was not delivered. The money is "
+        "not owed as invoiced, in their view."
+    ),
+    RootCause.UNKNOWN: (
+        "Use this when there is no reply, when the reply says nothing useful, "
+        "or when the text is not ordinary business correspondence at all. "
+        "Choosing this is correct behaviour, not failure."
+    ),
+}
 
-SYSTEM_PROMPT = """You classify failed payment attempts for an Indian payment \
+SURFACE_CAUSES: dict[Surface, dict[RootCause, str]] = {
+    Surface.PAYMENTS: PAYMENT_CAUSES,
+    Surface.SUBSCRIPTIONS: PAYMENT_CAUSES,
+    Surface.RECEIVABLES: RECEIVABLE_CAUSES,
+}
+
+_CAUSE_BY_VALUE = {c.value: c for c in RootCause}
+
+SYSTEM_PROMPT = """You classify {subject} for an Indian payment \
 processor. Your entire job is to decide which root cause best explains one \
-failure, using only the provider evidence supplied.
+case, using only the evidence supplied.
 
 You have no ability to act. You cannot retry a payment, message a customer, or \
 change any record. Something downstream reads your classification and decides, \
@@ -114,7 +156,21 @@ nobody will be contacted, which is the right outcome for a weak signal.
 Being unsure is useful information; a confident guess is not.
 - Quote the specific evidence you relied on, verbatim, in key_evidence.
 - Keep the rationale to one sentence, describing what in the evidence led you \
-there."""
+there.{extra}"""
+
+#: Appended for receivables only. Extracting the date is the point: it is what
+#: turns "they said they would pay" into a rule the policy engine can enforce.
+PROMISE_INSTRUCTION = """
+- If, and only if, the cause is promise_to_pay, set promised_within_days to how \
+many days from now the buyer has committed to pay. Convert a named date or a \
+payment run into a number of days. Leave it null for every other cause and \
+whenever no specific timing was given."""
+
+SUBJECT = {
+    "payments": "failed payment attempts",
+    "subscriptions": "failed recurring mandate charges",
+    "receivables": "replies from business customers about overdue invoices",
+}
 
 RESPONSE_SCHEMA: dict = {
     "type": "object",
@@ -129,11 +185,42 @@ RESPONSE_SCHEMA: dict = {
 }
 
 
-def build_system_prompt() -> str:
+def build_system_prompt(surface: Surface = Surface.PAYMENTS) -> str:
+    causes = SURFACE_CAUSES[surface]
     taxonomy = "\n".join(
-        f"- {cause.value}: {description}" for cause, description in PAYMENT_CAUSES.items()
+        f"- {cause.value}: {description}" for cause, description in causes.items()
     )
-    return SYSTEM_PROMPT.format(taxonomy=taxonomy)
+    return SYSTEM_PROMPT.format(
+        subject=SUBJECT[surface.value],
+        taxonomy=taxonomy,
+        extra=PROMISE_INSTRUCTION if surface is Surface.RECEIVABLES else "",
+    )
+
+
+def schema_for(surface: Surface) -> dict:
+    """The output shape, narrowed to the causes this surface can actually have.
+
+    Offering a model the full enum invites a confident answer from the wrong
+    half of it, and an invoice cannot fail because a card expired.
+    """
+    schema = {
+        "type": "object",
+        "properties": {
+            "cause": {
+                "type": "string",
+                "enum": sorted(c.value for c in SURFACE_CAUSES[surface]),
+            },
+            "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+            "rationale": {"type": "string"},
+            "key_evidence": {"type": "array", "items": {"type": "string"}},
+        },
+        "required": ["cause", "confidence", "rationale", "key_evidence"],
+        "additionalProperties": False,
+    }
+    if surface is Surface.RECEIVABLES:
+        schema["properties"]["promised_within_days"] = {"type": ["integer", "null"]}
+        schema["required"] = [*schema["required"], "promised_within_days"]
+    return schema
 
 
 #: Fields worth sending. Deliberately excludes the customer entirely: nothing
@@ -148,21 +235,52 @@ EVIDENCE_FIELDS = (
     "method",
 )
 
+#: An invoice has no error codes. What it has is what somebody wrote back.
+RECEIVABLE_FIELDS = (
+    "days_overdue",
+    "payment_terms",
+    "thread",
+)
+
+
+def fields_for(surface: Surface) -> tuple[str, ...]:
+    """What the model is shown."""
+    return RECEIVABLE_FIELDS if surface is Surface.RECEIVABLES else EVIDENCE_FIELDS
+
+
+#: What makes two cases the *same question*, which is a smaller set than what
+#: the model is shown. Days overdue is useful context for the model and useless
+#: as a cache key: "we are waiting on a PO" means the same thing at 12 days and
+#: at 80, and keying on it turned 23 real questions into 4,085 paid ones.
+KEY_FIELDS: dict[Surface, tuple[str, ...]] = {
+    Surface.RECEIVABLES: ("thread",),
+}
+
+
+def key_fields_for(surface: Surface) -> tuple[str, ...]:
+    return KEY_FIELDS.get(surface, fields_for(surface))
+
 
 def build_user_prompt(event: RiskEvent) -> str:
     lines = [
         f"{field}: {event.provider_signals[field]}"
-        for field in EVIDENCE_FIELDS
+        for field in fields_for(event.surface)
         if field in event.provider_signals
     ]
     lines.append(f"amount_inr: {event.amount.as_rupees_str}")
-    lines.append(f"prior_attempts: {event.attempts_so_far}")
+    if event.surface is not Surface.RECEIVABLES:
+        lines.append(f"prior_attempts: {event.attempts_so_far}")
     payload = "\n".join(lines)
+    ask = (
+        "Classify why this invoice has not been paid."
+        if event.surface is Surface.RECEIVABLES
+        else "Classify the root cause of this failure."
+    )
     return (
         "<provider_payload>\n"
         f"{payload}\n"
         "</provider_payload>\n\n"
-        "Classify the root cause of this failure."
+        f"{ask}"
     )
 
 
@@ -174,12 +292,18 @@ def case_fingerprint(event: RiskEvent) -> str:
     keying on the amount would turn a handful of distinct questions into
     hundreds of near-identical paid calls.
     """
-    return fingerprint(
-        {
-            "v": SCHEMA_VERSION,
-            **{f: str(event.provider_signals.get(f, "")) for f in EVIDENCE_FIELDS},
-        }
-    )
+    key: dict[str, object] = {
+        "v": SCHEMA_VERSION,
+        **{f: str(event.provider_signals.get(f, "")) for f in key_fields_for(event.surface)},
+    }
+    # Payments keys predate the multi-surface split and are omitted rather than
+    # renamed, because recorded answers are evidence: invalidating them costs a
+    # day against a rate limit and changes published figures for no gain. The
+    # field sets do not overlap between surfaces, so a collision is not
+    # reachable anyway.
+    if event.surface is not Surface.PAYMENTS:
+        key["surface"] = event.surface.value
+    return fingerprint(key)
 
 
 @dataclass
@@ -192,7 +316,7 @@ class LLMDiagnoser:
     ceiling: float = 0.92
 
     def __post_init__(self) -> None:
-        self._system = build_system_prompt()
+        self._systems = {s: build_system_prompt(s) for s in Surface}
 
     def __call__(self, event: RiskEvent) -> Diagnosis:
         key = case_fingerprint(event)
@@ -215,7 +339,11 @@ class LLMDiagnoser:
 
         try:
             answer: Answer = self.client.ask(
-                Ask(system=self._system, user=build_user_prompt(event), schema=RESPONSE_SCHEMA)
+                Ask(
+                    system=self._systems[event.surface],
+                    user=build_user_prompt(event),
+                    schema=schema_for(event.surface),
+                )
             )
         except LLMError as exc:
             return self._degraded(event, f"model unavailable: {exc}")
@@ -240,8 +368,12 @@ class LLMDiagnoser:
     def _to_diagnosis(self, event: RiskEvent, payload: dict, *, cost_usd: float) -> Diagnosis:
         raw_cause = payload.get("cause")
         cause = _CAUSE_BY_VALUE.get(raw_cause) if isinstance(raw_cause, str) else None
-        if cause is None:
-            return self._degraded(event, f"model returned an unrecognised cause {raw_cause!r}")
+        if cause is None or cause not in SURFACE_CAUSES[event.surface]:
+            return self._degraded(
+                event,
+                f"model returned {raw_cause!r}, which is not a cause "
+                f"{event.surface.value} can have",
+            )
 
         if cause is RootCause.UNKNOWN:
             return self._degraded(event, "model reviewed the evidence and could not separate causes")
@@ -259,9 +391,15 @@ class LLMDiagnoser:
         if isinstance(quoted, list):
             for i, item in enumerate(quoted[:4]):
                 evidence[f"quote_{i + 1}"] = str(item)[:200]
-        for field in ("error_code", "error_reason", "error_description"):
+        for field in ("error_code", "error_reason", "error_description", "days_overdue"):
             if field in event.provider_signals:
                 evidence[field] = str(event.provider_signals[field])
+
+        promised = payload.get("promised_within_days")
+        if cause is RootCause.PROMISE_TO_PAY and isinstance(promised, int) and promised >= 0:
+            # The one piece of model output that becomes a policy input rather
+            # than a label: it is what the honour-the-promise clause reads.
+            evidence["promised_within_days"] = str(min(promised, 120))
 
         return Diagnosis(
             cause=cause,

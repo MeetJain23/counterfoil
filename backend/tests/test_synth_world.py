@@ -48,9 +48,12 @@ def test_different_seeds_produce_different_batches():
     assert [c.true_cause for c in a] != [c.true_cause for c in b]
 
 
-def test_unimplemented_surfaces_fail_loudly():
-    with pytest.raises(NotImplementedError):
-        generate(BatchSpec(size=5, seed=1, surface=Surface.RECEIVABLES))
+def test_every_registered_surface_generates():
+    """A surface with tables but no generator branch would fail silently."""
+    for surface in Surface:
+        cases = generate(BatchSpec(size=20, seed=1, surface=surface))
+        assert len(cases) == 20
+        assert all(c.event.surface is surface for c in cases)
 
 
 # --------------------------------------------------------------------- #

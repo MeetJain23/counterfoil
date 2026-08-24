@@ -223,6 +223,11 @@ def run_case(
             contacts += 1
         if action.intervention in MANDATORY_NOTICE:
             result.mandatory_notices += 1
+        if action.intervention is Intervention.ESCALATE_HUMAN and engine.capacity:
+            # Consumed on execution rather than on approval, so the naive
+            # arm running in shadow mode also draws down the same finite
+            # team it is pretending not to have.
+            engine.capacity.consume()
         last_at = action.at
 
         landed, probability = attempt(case, action, step, contacts_before)

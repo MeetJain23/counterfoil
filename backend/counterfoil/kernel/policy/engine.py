@@ -13,6 +13,7 @@ Design constraints:
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -34,17 +35,59 @@ IST = timezone(timedelta(hours=5, minutes=30))
 
 DEFAULT_POLICY_PATH = Path(__file__).with_name("policies.yaml")
 
-#: Interventions that are always permissible: they neither spend money nor
-#: contact a customer, so no clause needs to gate them.
+#: Interventions that neither spend money nor contact a customer, so the
+#: confidence, value and action-count gates do not apply to them.
+#:
+#: Escalation is in here because a human looking at a case is always a safe
+#: response to uncertainty, which is why a degraded diagnosis is allowed to
+#: reach one. It is not free, though, so escalation.min_value gates it
+#: separately rather than by exclusion from this set.
 ALWAYS_SAFE = frozenset({Intervention.NO_ACTION, Intervention.ESCALATE_HUMAN})
 
 
+@dataclass
+class Capacity:
+    """How much human attention exists, and how much of it is left.
+
+    The only genuinely shared state in the policy engine, and it has to be
+    shared: every other clause asks a question about one case, while "can a
+    person look at this" is a question about the whole queue. A collections
+    team works a fixed number of accounts a week no matter how many are
+    overdue, and an agent that ignores that is not making a recommendation, it
+    is making a wish.
+
+    Modelling it is what forces the agent to triage. With a budget, escalating
+    is a choice between cases rather than a free answer to any case, which is
+    the entire reason diagnosis is worth doing on this surface.
+    """
+
+    limit: int
+    used: int = 0
+
+    @property
+    def remaining(self) -> int:
+        return max(0, self.limit - self.used)
+
+    @property
+    def exhausted(self) -> bool:
+        return self.used >= self.limit
+
+    def consume(self) -> None:
+        self.used += 1
+
+
 class PolicyEngine:
-    def __init__(self, config: dict[str, Any] | None = None, path: Path | None = None):
+    def __init__(
+        self,
+        config: dict[str, Any] | None = None,
+        path: Path | None = None,
+        capacity: Capacity | None = None,
+    ):
         if config is None:
             config = yaml.safe_load((path or DEFAULT_POLICY_PATH).read_text(encoding="utf-8"))
         self.cfg = config
         self.version = config.get("version", 0)
+        self.capacity = capacity
 
     # ------------------------------------------------------------------ #
     # clauses: each returns None when it does not apply to this proposal  #
@@ -176,6 +219,73 @@ class PolicyEngine:
             f"channel {pr.channel.value} " + ("permitted" if ok else f"not in {sorted(allowed)}"),
         )
 
+    def _c_escalation_capacity(self, ev, dx, pr) -> ClauseEval | None:
+        if pr.intervention is not Intervention.ESCALATE_HUMAN or self.capacity is None:
+            return None
+        return ClauseEval(
+            "escalation.capacity",
+            not self.capacity.exhausted,
+            f"{self.capacity.used} of {self.capacity.limit} human reviews used "
+            "in this run",
+        )
+
+    def _c_escalation_is_worth_a_person(self, ev, dx, pr) -> ClauseEval | None:
+        """Human attention is the one thing here that does not scale.
+
+        Every other clause caps a cheap action. This one caps the expensive
+        one, and it is what stops "escalate everything" being the optimal
+        policy on a surface where invoices are large and a handoff looks free.
+        """
+        if pr.intervention is not Intervention.ESCALATE_HUMAN:
+            return None
+        floor = self.cfg.get(ev.surface.value, {}).get("escalation_min_value_paise")
+        if floor is None:
+            return None
+        floor = int(floor)
+        return ClauseEval(
+            "escalation.min_value",
+            ev.amount.paise >= floor,
+            f"at-risk {ev.amount} against a Rs {floor / 100:,.0f} floor for "
+            "occupying a person",
+        )
+
+    def _c_honour_promise_to_pay(self, ev, dx, pr) -> ClauseEval | None:
+        """Do not chase a buyer before the date they gave you.
+
+        The promise is extracted from their own reply by the model, so this is
+        the clause that turns reading comprehension into restraint. It is also
+        the clause most likely to look like inaction on a dashboard, which is
+        why the ledger records the date being honoured rather than silence.
+        """
+        if ev.surface is not Surface.RECEIVABLES:
+            return None
+        if pr.intervention not in CONTACTING:
+            return None
+        if not self.cfg["receivables"].get("honour_promise_to_pay", True):
+            return None
+
+        promised = dx.evidence.get("promised_within_days")
+        if promised is None:
+            return None
+        try:
+            days = int(promised)
+        except (TypeError, ValueError):
+            return None
+
+        grace = int(self.cfg["receivables"]["promise_grace_hours"])
+        due = ev.occurred_at + timedelta(days=days, hours=grace)
+        when = pr.scheduled_for or ev.occurred_at
+        return ClauseEval(
+            "receivables.honour_promise_to_pay",
+            when >= due,
+            f"buyer committed to pay in {days}d; contact is "
+            + (
+                f"after that date plus {grace}h grace"
+                if when >= due
+                else f"{(due - when).total_seconds() / 3600:.0f}h too early"
+            ),
+        )
+
     def _c_pre_debit_notice(self, ev, dx, pr) -> ClauseEval | None:
         """A recurring debit may not be presented without prior notice.
 
@@ -249,6 +359,9 @@ class PolicyEngine:
         "_c_no_dunning_when_disputed",
         "_c_pre_debit_notice",
         "_c_consecutive_failure_stop",
+        "_c_honour_promise_to_pay",
+        "_c_escalation_is_worth_a_person",
+        "_c_escalation_capacity",
     )
 
     # ------------------------------------------------------------------ #

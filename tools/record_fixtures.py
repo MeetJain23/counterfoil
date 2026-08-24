@@ -31,6 +31,7 @@ from counterfoil.kernel.diagnose import rules  # noqa: E402
 from counterfoil.kernel.diagnose.llm import LLMDiagnoser, case_fingerprint  # noqa: E402
 from counterfoil.config import load_settings  # noqa: E402
 from counterfoil.llm import Budget, FixtureStore, build_client  # noqa: E402
+from counterfoil.domain.events import Surface  # noqa: E402
 from counterfoil.synth import BatchSpec, generate  # noqa: E402
 
 FIXTURES = Path("llm_fixtures")
@@ -41,16 +42,29 @@ FIXTURES = Path("llm_fixtures")
 ESTIMATE_PER_CALL_USD = 0.0006
 
 
-def distinct_questions(sizes: tuple[int, ...], seeds: tuple[int, ...]):
-    """Every situation across every batch we intend to publish numbers for."""
+def distinct_questions(
+    sizes: tuple[int, ...], seeds: tuple[int, ...], surfaces: tuple[Surface, ...]
+):
+    """Every situation across every batch we intend to publish numbers for.
+
+    Collapsed by fingerprint first. A thousand invoices produce a few dozen
+    distinct questions, and paying for the other nine hundred would be paying
+    to be told the same thing again.
+    """
     seen: dict[str, object] = {}
-    for size in sizes:
-        for seed in seeds:
-            for case in generate(BatchSpec(size=size, seed=seed)):
-                if rules.diagnose(case.event) is not None:
-                    continue
-                key = case_fingerprint(case.event)
-                seen.setdefault(key, case.event)
+    for surface in surfaces:
+        for size in sizes:
+            for seed in seeds:
+                spec = BatchSpec(
+                    size=size,
+                    seed=seed,
+                    surface=surface,
+                    window_hours=48 if surface is Surface.SUBSCRIPTIONS else 72,
+                )
+                for case in generate(spec):
+                    if rules.diagnose(case.event) is not None:
+                        continue
+                    seen.setdefault(case_fingerprint(case.event), case.event)
     return seen
 
 
@@ -63,18 +77,22 @@ def main() -> int:
                         help="requests per minute; the free tier is capped")
     parser.add_argument("--sizes", type=int, nargs="+", default=[1000])
     parser.add_argument("--seeds", type=int, nargs="+", default=[7, 11, 23, 42, 99, 2026])
+    parser.add_argument("--surfaces", nargs="+", default=[s.value for s in Surface],
+                        choices=[s.value for s in Surface])
     args = parser.parse_args()
 
     settings = load_settings()
     model = args.model or settings.llm_model
 
-    questions = distinct_questions(tuple(args.sizes), tuple(args.seeds))
+    surfaces = tuple(Surface(s) for s in args.surfaces)
+    questions = distinct_questions(tuple(args.sizes), tuple(args.seeds), surfaces)
     store = FixtureStore(FIXTURES, mode="record" if args.confirm else "replay")
 
     already = sum(1 for key in questions if (FIXTURES / f"{key}.json").exists())
     todo = len(questions) - already
 
     print(f"batches      : sizes {args.sizes}, seeds {args.seeds}")
+    print(f"surfaces     : {', '.join(s.value for s in surfaces)}")
     print(f"questions    : {len(questions)} distinct, {already} already recorded")
     print(f"to record    : {todo}")
     print(f"provider     : {settings.llm_provider} / {model}")
