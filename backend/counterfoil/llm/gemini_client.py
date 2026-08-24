@@ -298,8 +298,9 @@ class GeminiClient:
             payload = send(url, {}, self.timeout) if self.transport else _get(url, self.timeout)
         except urllib.error.HTTPError as exc:
             raise LLMError(f"{exc.code} listing Gemini models") from exc
-        except urllib.error.URLError as exc:
-            raise LLMError(f"could not reach Gemini: {exc.reason}") from exc
+        except (TimeoutError, urllib.error.URLError) as exc:
+            reason = getattr(exc, "reason", exc)
+            raise LLMError(f"could not reach Gemini: {reason}") from exc
 
         return [
             m["name"].removeprefix("models/")
