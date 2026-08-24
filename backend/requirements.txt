@@ -1,12 +1,21 @@
-# Runtime
-PyYAML==6.0.3
+# Counterfoil dependencies. Pinned, because the figures in the README are
+# reproducible claims and "it worked on the version I had" is not reproducible.
+#
+# Deliberately short. The Gemini client is written against urllib rather than a
+# vendor SDK, and the audit ledger is JSONL rather than a database, so neither
+# pulls a dependency tree in for one HTTP call or one append.
 
-# Added as the corresponding layers land:
-#   anthropic       -- LLM diagnoser
-#   fastapi         -- API surface
-#   uvicorn         -- ASGI server
-#   httpx           -- Razorpay client
-#   SQLAlchemy      -- outcome store
+# --- runtime ---
+PyYAML==6.0.3                 # the policy file
+fastapi==0.141.1              # read-only dashboard API
+uvicorn==0.52.4               # ASGI server for it
 
-# Development
-pytest==8.3.4
+# --- optional: only needed to record new model fixtures ---
+# The committed fixtures in llm_fixtures/ mean the eval reproduces with neither
+# of these installed and no API key at all. Gemini needs nothing beyond the
+# standard library.
+anthropic==1.0.0              # only if COUNTERFOIL_LLM_PROVIDER=anthropic
+
+# --- development ---
+pytest==9.0.3
+httpx==0.28.1                 # required by fastapi's TestClient
