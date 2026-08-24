@@ -1,5 +1,14 @@
+# Normalise line endings so a repo developed on Windows and read on Linux
+# does not show a whole-file diff for every file.
 * text=auto eol=lf
+
+# Recorded model answers are evidence: they must hash and diff identically
+# on every machine.
+llm_fixtures/*.json text eol=lf
+*.jsonl text eol=lf
+
+# Binary, never touched.
 *.png binary
 *.jpg binary
 *.pdf binary
-*.woff2 binary
+*.ico binary
