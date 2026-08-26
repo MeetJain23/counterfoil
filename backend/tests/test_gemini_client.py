@@ -578,3 +578,34 @@ def test_an_http_status_is_not_swallowed_by_the_transport_handler():
     client, _, _ = build(transport=http_error(404, body), max_retries=0)
     with pytest.raises(LLMError, match="404"):
         client.ask(ASK)
+
+
+def test_an_optional_field_becomes_nullable_rather_than_a_union():
+    """Gemini has no union type and rejects the list form with a proto error.
+
+    JSON Schema writes an optional integer as {"type": ["integer", "null"]}.
+    Passing that through cost a whole recording run, because the API replies
+    with "Proto field is not repeating" and names a property index rather than
+    the problem.
+    """
+    out = to_gemini_schema({"type": "object", "properties": {
+        "promised_within_days": {"type": ["integer", "null"]},
+    }})
+    field = out["properties"]["promised_within_days"]
+    assert field["type"] == "INTEGER"
+    assert field["nullable"] is True
+    assert not isinstance(field["type"], list)
+
+
+def test_a_non_optional_field_is_not_marked_nullable():
+    out = to_gemini_schema({"type": "object", "properties": {"n": {"type": "integer"}}})
+    assert out["properties"]["n"] == {"type": "INTEGER"}
+
+
+def test_the_receivables_schema_survives_translation_whole():
+    from counterfoil.domain.events import Surface
+    from counterfoil.kernel.diagnose.llm import schema_for
+
+    out = to_gemini_schema(schema_for(Surface.RECEIVABLES))
+    for name, spec in out["properties"].items():
+        assert isinstance(spec.get("type"), str), f"{name} kept a union type"

@@ -130,7 +130,16 @@ def to_gemini_schema(schema: dict[str, Any]) -> dict[str, Any]:
     for key, value in schema.items():
         if key in _UNSUPPORTED:
             continue
-        if key == "type" and isinstance(value, str):
+        if key == "type" and isinstance(value, list):
+            # JSON Schema spells an optional field as a union of types.
+            # Gemini's dialect has no union: it wants the concrete type plus
+            # nullable, and rejects the list outright with a proto error that
+            # names the field index rather than the problem.
+            concrete = [v for v in value if str(v).lower() != "null"]
+            out["type"] = _TYPE_MAP.get(str(concrete[0]).lower(), str(concrete[0]).upper())
+            if len(concrete) != len(value):
+                out["nullable"] = True
+        elif key == "type" and isinstance(value, str):
             out["type"] = _TYPE_MAP.get(value.lower(), value.upper())
         elif key == "properties" and isinstance(value, dict):
             out["properties"] = {k: to_gemini_schema(v) for k, v in value.items()}

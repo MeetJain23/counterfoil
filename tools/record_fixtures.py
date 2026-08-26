@@ -146,7 +146,9 @@ def main() -> int:
                   f"({result.confidence:.2f})", flush=True)
         else:
             degraded += 1
-            print(f"  [{i}/{len(questions)}] withheld: {result.rationale[:70]}", flush=True)
+            # Not truncated. A shortened error message has hidden the actual
+            # cause of a failed run three separate times on this project.
+            print(f"  [{i}/{len(questions)}] withheld: {result.rationale}", flush=True)
         if budget.exhausted:
             print(f"\nSpend cap reached after {i} questions. Re-run to continue.")
             break
