@@ -1,0 +1,14 @@
+{
+  "cost_usd": 0.0,
+  "input_tokens": 739,
+  "model": "gemini-3.6-flash",
+  "output_tokens": 51,
+  "payload": {
+    "cause": "bank_downtime",
+    "confidence": 0.95,
+    "key_evidence": [
+      "Unable to reach the issuing bank at this time."
+    ],
+    "rationale": "The error description explicitly indicates an inability to communicate with the issuing bank during authorization."
+  }
+}

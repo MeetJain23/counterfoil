@@ -1,0 +1,14 @@
+{
+  "cost_usd": 0.0,
+  "input_tokens": 745,
+  "model": "gemini-3.6-flash",
+  "output_tokens": 53,
+  "payload": {
+    "cause": "issuer_decline_soft",
+    "confidence": 0.9,
+    "key_evidence": [
+      "Payment was not approved. No further detail was provided by the issuer."
+    ],
+    "rationale": "The issuer refused to approve the transaction without providing any specific error reason."
+  }
+}

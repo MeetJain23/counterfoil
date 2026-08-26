@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -14,7 +14,7 @@ def event(**signals):
         event_id="evt_1",
         surface=Surface.PAYMENTS,
         kind=RiskKind.PAYMENT_FAILED,
-        occurred_at=datetime(2026, 8, 3, 12, tzinfo=timezone.utc),
+        occurred_at=datetime(2026, 8, 3, 12, tzinfo=UTC),
         amount=Money.rupees(1200),
         customer=Customer("cus_1"),
         provider_signals=signals,

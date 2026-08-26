@@ -1,6 +1,6 @@
+from .diagnosis import TERMINAL_CAUSES, Diagnosis, DiagnosisPath, RootCause
+from .events import Customer, RiskEvent, RiskKind, Surface
 from .money import Money
-from .events import Surface, RiskKind, Customer, RiskEvent
-from .diagnosis import RootCause, DiagnosisPath, Diagnosis, TERMINAL_CAUSES
 
 __all__ = [
     "Money",

@@ -339,10 +339,11 @@ def test_pacing_is_off_by_default():
 
 
 def test_the_diagnoser_degrades_on_a_gemini_failure_like_any_other(tmp_path):
+    from test_llm_diagnoser import event
+
     from counterfoil.domain.diagnosis import DiagnosisPath
     from counterfoil.kernel.diagnose.llm import LLMDiagnoser
     from counterfoil.llm import Budget, FixtureStore
-    from test_llm_diagnoser import event
 
     def dead(url, body, timeout):
         raise urllib.error.URLError("offline")
@@ -356,10 +357,11 @@ def test_the_diagnoser_degrades_on_a_gemini_failure_like_any_other(tmp_path):
 
 
 def test_a_gemini_answer_becomes_the_same_diagnosis_as_an_anthropic_one(tmp_path):
+    from test_llm_diagnoser import event
+
     from counterfoil.domain.diagnosis import DiagnosisPath, RootCause
     from counterfoil.kernel.diagnose.llm import LLMDiagnoser
     from counterfoil.llm import Budget, FixtureStore
-    from test_llm_diagnoser import event
 
     dx = LLMDiagnoser(
         client=GeminiClient(api_key="k", transport=canned(ok_payload())),
@@ -378,9 +380,10 @@ def test_fixtures_are_provider_agnostic(tmp_path):
     The cache key is the situation, not the model, so switching provider does
     not invalidate recorded evidence.
     """
+    from test_llm_diagnoser import event
+
     from counterfoil.kernel.diagnose.llm import LLMDiagnoser
     from counterfoil.llm import Budget, FixtureStore, ScriptedClient
-    from test_llm_diagnoser import event
 
     recorder = LLMDiagnoser(
         client=GeminiClient(api_key="k", transport=canned(ok_payload())),
@@ -426,11 +429,12 @@ def test_a_retired_model_degrades_with_the_replacement_still_readable(tmp_path):
     """The 404 body carries the fix; it has to survive into the rationale."""
     import json as _json
 
+    from test_llm_diagnoser import event
+
     from counterfoil.domain.diagnosis import DiagnosisPath
     from counterfoil.kernel.diagnose.llm import LLMDiagnoser
     from counterfoil.llm import Budget, FixtureStore
     from counterfoil.llm.gemini_client import suggested_replacement
-    from test_llm_diagnoser import event
 
     body = _json.dumps({
         "error": {

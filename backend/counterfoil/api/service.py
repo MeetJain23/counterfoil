@@ -10,13 +10,12 @@ from __future__ import annotations
 
 import threading
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from ..domain.decision import Intervention
 from ..domain.events import Surface
 from ..domain.money import Money
-from ..domain.outcome import OutcomeState
 from ..eval.harness import run_batch
 from ..eval.metrics import ArmResult, BatchReport
 from ..eval.sensitivity import run_sensitivity
@@ -100,7 +99,7 @@ def execute(spec: BatchSpec, *, ledger_dir, diagnoser=None) -> Run:
         spec=spec,
         report=report,
         ledger=ledger,
-        created_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
         amount_at_risk_paise=at_risk,
     )
 

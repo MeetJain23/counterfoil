@@ -11,8 +11,8 @@ Everything is seeded. Two runs of the same command produce the same figures.
 from __future__ import annotations
 
 import argparse
-from collections import Counter
 import sys
+from collections import Counter
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
@@ -21,11 +21,11 @@ from counterfoil.config import load_dotenv  # noqa: E402
 
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
+from counterfoil.domain.events import Surface  # noqa: E402
 from counterfoil.domain.money import Money  # noqa: E402
 from counterfoil.eval import run_batch  # noqa: E402
 from counterfoil.eval.sensitivity import run_across_seeds, run_sensitivity  # noqa: E402
 from counterfoil.ledger import Ledger  # noqa: E402
-from counterfoil.domain.events import Surface  # noqa: E402
 from counterfoil.synth import BatchSpec  # noqa: E402
 
 RULE = "=" * 78

@@ -14,8 +14,8 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse, JSONResponse
 
 from ..config import load_settings
-from ..kernel.policy import PolicyEngine
 from ..domain.events import Surface
+from ..kernel.policy import PolicyEngine
 from . import service
 from .service import MAX_BATCH, RunStore
 

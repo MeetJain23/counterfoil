@@ -16,10 +16,11 @@ import hashlib
 import json
 import re
 import threading
+from collections.abc import Iterator
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any
 
 GENESIS_HASH = "0" * 64
 
@@ -56,7 +57,7 @@ def _scan_for_pii(value: Any, path: str = "$") -> None:
         for k, v in value.items():
             _scan_for_pii(k, f"{path}.{k}")
             _scan_for_pii(v, f"{path}.{k}")
-    elif isinstance(value, (list, tuple)):
+    elif isinstance(value, list | tuple):
         for i, v in enumerate(value):
             _scan_for_pii(v, f"{path}[{i}]")
 
@@ -120,8 +121,8 @@ class Ledger:
         if not self.path.exists():
             return 0, GENESIS_HASH
         last = None
-        for last in self._read_raw():
-            pass
+        for row in self._read_raw():
+            last = row
         if last is None:
             return 0, GENESIS_HASH
         return int(last["seq"]) + 1, str(last["entry_hash"])
@@ -147,7 +148,7 @@ class Ledger:
         with self._lock:
             draft = LedgerEntry(
                 seq=self._seq,
-                ts=datetime.now(timezone.utc).isoformat(),
+                ts=datetime.now(UTC).isoformat(),
                 run_id=self.run_id,
                 event_id=event_id,
                 arm=arm,
@@ -169,8 +170,7 @@ class Ledger:
     def verify(self) -> ChainBreak | None:
         """Walk the chain. Returns the first break found, or None if intact."""
         prev = GENESIS_HASH
-        expected_seq = 0
-        for entry in self.entries():
+        for expected_seq, entry in enumerate(self.entries()):
             if entry.seq != expected_seq:
                 return ChainBreak(entry.seq, f"sequence gap: expected {expected_seq}")
             if entry.prev_hash != prev:
@@ -178,7 +178,6 @@ class Ledger:
             if entry.compute_hash() != entry.entry_hash:
                 return ChainBreak(entry.seq, "entry contents do not match its hash")
             prev = entry.entry_hash
-            expected_seq += 1
         return None
 
     def timeline(self, event_id: str) -> list[LedgerEntry]:

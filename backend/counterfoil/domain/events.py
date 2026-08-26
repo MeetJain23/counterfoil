@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import enum
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from .money import Money
@@ -77,5 +77,5 @@ class RiskEvent:
         return int(self.context.get("contacts_last_7d", 0))
 
     def age_hours(self, now: datetime | None = None) -> float:
-        now = now or datetime.now(timezone.utc)
+        now = now or datetime.now(UTC)
         return (now - self.occurred_at).total_seconds() / 3600.0

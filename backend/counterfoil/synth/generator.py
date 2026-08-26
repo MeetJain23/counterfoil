@@ -16,13 +16,13 @@ from __future__ import annotations
 
 import random
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from ..domain.diagnosis import RootCause
 from ..domain.events import Customer, RiskEvent, RiskKind, Surface
 from ..domain.money import Money
 from . import profiles
-from .profiles import AMBIGUOUS_DESCRIPTIONS, AMBIGUOUS_RATE, CLEAR_SIGNALS, SEGMENTS
+from .profiles import AMBIGUOUS_RATE, SEGMENTS
 
 #: How many sequential recovery attempts a case has pre-drawn randomness for.
 #: The policy engine caps real runs well below this.
@@ -70,7 +70,7 @@ class BatchSpec:
     surface: Surface = Surface.PAYMENTS
     #: Batch covers failures arriving across this many hours.
     window_hours: int = 72
-    starts_at: datetime = datetime(2026, 8, 3, 0, 0, tzinfo=timezone.utc)
+    starts_at: datetime = datetime(2026, 8, 3, 0, 0, tzinfo=UTC)
 
 
 def _weighted_choice(rng: random.Random, weights: dict) -> object:

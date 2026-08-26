@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -9,7 +9,7 @@ from counterfoil.domain.money import Money
 from counterfoil.kernel.policy import IST, PolicyEngine
 
 # A Tuesday, 14:30 IST -- comfortably outside quiet hours.
-BASE = datetime(2026, 8, 18, 14, 30, tzinfo=IST).astimezone(timezone.utc)
+BASE = datetime(2026, 8, 18, 14, 30, tzinfo=IST).astimezone(UTC)
 
 
 @pytest.fixture
@@ -142,7 +142,7 @@ def test_contact_frequency_cap(engine):
 
 
 def test_quiet_hours_defer_rather_than_drop(engine):
-    at_2340 = datetime(2026, 8, 18, 23, 40, tzinfo=IST).astimezone(timezone.utc)
+    at_2340 = datetime(2026, 8, 18, 23, 40, tzinfo=IST).astimezone(UTC)
     d = engine.evaluate(
         event(occurred_at=at_2340),
         dx(),
@@ -161,7 +161,7 @@ def test_quiet_hours_defer_rather_than_drop(engine):
 
 
 def test_early_morning_defers_to_the_same_day(engine):
-    at_0400 = datetime(2026, 8, 18, 4, 0, tzinfo=IST).astimezone(timezone.utc)
+    at_0400 = datetime(2026, 8, 18, 4, 0, tzinfo=IST).astimezone(UTC)
     d = engine.evaluate(
         event(occurred_at=at_0400), dx(), Proposal(Intervention.CUSTOMER_NUDGE, channel=Channel.SMS)
     )
@@ -171,7 +171,7 @@ def test_early_morning_defers_to_the_same_day(engine):
 
 def test_multiple_blocks_are_not_papered_over_by_substitution(engine):
     """Substitution only applies when quiet hours are the *sole* blocker."""
-    at_2340 = datetime(2026, 8, 18, 23, 40, tzinfo=IST).astimezone(timezone.utc)
+    at_2340 = datetime(2026, 8, 18, 23, 40, tzinfo=IST).astimezone(UTC)
     d = engine.evaluate(
         event(occurred_at=at_2340, context={"contacts_last_7d": 5}),
         dx(),

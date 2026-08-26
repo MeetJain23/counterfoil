@@ -10,7 +10,7 @@ import pytest
 
 from counterfoil.domain.decision import Intervention
 from counterfoil.domain.diagnosis import DiagnosisPath, RootCause
-from counterfoil.domain.outcome import Arm, OutcomeState
+from counterfoil.domain.outcome import OutcomeState
 from counterfoil.eval import run_batch
 from counterfoil.eval.arms import run_agent, run_control, run_naive
 from counterfoil.eval.sensitivity import run_across_seeds, run_sensitivity

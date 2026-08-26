@@ -24,7 +24,7 @@ from counterfoil.config import load_dotenv  # noqa: E402
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
 from dataclasses import replace  # noqa: E402
-from datetime import datetime, timezone  # noqa: E402
+from datetime import UTC, datetime  # noqa: E402
 
 from counterfoil.config import load_settings  # noqa: E402
 from counterfoil.domain.events import Customer, RiskEvent, RiskKind, Surface  # noqa: E402
@@ -37,7 +37,7 @@ PROBE = RiskEvent(
     event_id="evt_probe",
     surface=Surface.PAYMENTS,
     kind=RiskKind.PAYMENT_FAILED,
-    occurred_at=datetime(2026, 8, 3, 12, tzinfo=timezone.utc),
+    occurred_at=datetime(2026, 8, 3, 12, tzinfo=UTC),
     amount=Money.rupees(1899),
     customer=Customer("cus_probe"),
     provider_signals={
@@ -123,7 +123,7 @@ def main() -> int:
         if replacement and replacement != settings.llm_model:
             print()
             print(f"  The provider named a replacement: {replacement}")
-            print(f"  Set this in .env, then re-run:")
+            print("  Set this in .env, then re-run:")
             print(f"      COUNTERFOIL_LLM_MODEL={replacement}")
         return 1
 

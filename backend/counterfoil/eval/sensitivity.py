@@ -24,7 +24,6 @@ from __future__ import annotations
 from contextlib import contextmanager
 from dataclasses import dataclass
 
-from .. import synth
 from ..synth import world
 from ..synth.generator import BatchSpec
 from .harness import run_batch

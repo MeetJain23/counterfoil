@@ -27,11 +27,11 @@ from counterfoil.config import load_dotenv  # noqa: E402
 
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
+from counterfoil.config import load_settings  # noqa: E402
+from counterfoil.domain.events import Surface  # noqa: E402
 from counterfoil.kernel.diagnose import rules  # noqa: E402
 from counterfoil.kernel.diagnose.llm import LLMDiagnoser, case_fingerprint  # noqa: E402
-from counterfoil.config import load_settings  # noqa: E402
 from counterfoil.llm import Budget, FixtureStore, build_client  # noqa: E402
-from counterfoil.domain.events import Surface  # noqa: E402
 from counterfoil.synth import BatchSpec, generate  # noqa: E402
 
 FIXTURES = Path("llm_fixtures")
@@ -131,7 +131,7 @@ def main() -> int:
 
     print()
     recorded = degraded = cached = 0
-    for i, (key, event) in enumerate(questions.items(), 1):
+    for i, event in enumerate(questions.values(), 1):
         hits_before = store.hits
         result = diagnoser(event)
         served_from_cache = store.hits > hits_before

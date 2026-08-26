@@ -1,0 +1,46 @@
+[tool.ruff]
+# The prose in this repository does real work. Docstrings explain why a number
+# is what it is and comments carry the reasoning behind policy clauses, so the
+# line length is set to what that prose reads well at rather than to 88.
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle
+    "F",    # pyflakes: unused imports and names, the ones that actually rot
+    "I",    # import sorting
+    "UP",   # pyupgrade
+    "B",    # bugbear
+    "SIM",  # simplifiable code
+]
+ignore = [
+    "E501",  # line length is checked by the formatter's own limit, not here
+    "B008",  # FastAPI's Depends/Query in defaults is the documented idiom
+]
+
+[tool.ruff.lint.isort]
+# counterfoil is this project, not a dependency. Without this the tests
+# sort their own package in alongside pytest.
+known-first-party = ["counterfoil"]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests name things for readability rather than brevity, and several
+# deliberately import inside a function to keep an assertion self-contained.
+"backend/tests/*" = ["E402", "B011"]
+# The CLI tools load .env before importing anything that reads settings, which
+# is an import ordering violation and the only correct order.
+"tools/*" = ["E402"]
+
+[tool.pytest.ini_options]
+testpaths = ["backend/tests"]
+# Quiet by default. The suite is the thing you run constantly; its output should
+# be a line, not a page.
+addopts = "-q"
+
+[tool.ruff.format]
+# Not enforced in CI. The behaviour tables in profiles.py and the playbooks in
+# propose.py are laid out in aligned columns on purpose, because they are read
+# as tables rather than as code, and the formatter collapses that alignment.
+# Lint catches the things that rot; layout here is a deliberate choice.
+quote-style = "double"

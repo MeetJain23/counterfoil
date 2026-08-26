@@ -20,7 +20,6 @@ from ..domain.decision import (
     BILLABLE,
     CONTACTING,
     MANDATORY_NOTICE,
-    ClauseEval,
     Decision,
     Intervention,
     Proposal,

@@ -7,7 +7,7 @@ right answer. These tests pin that behaviour down rather than papering over it.
 """
 
 from collections import Counter
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -18,12 +18,12 @@ from counterfoil.domain.money import Money
 from counterfoil.eval import run_batch
 from counterfoil.kernel.diagnose import rules
 from counterfoil.kernel.policy import IST, PolicyEngine
-from counterfoil.kernel.propose import next_proposal, playbook_for
+from counterfoil.kernel.propose import playbook_for
 from counterfoil.synth import BatchSpec, generate
 from counterfoil.synth.profiles import SUBSCRIPTION_CAUSE_MIX
 
 SPEC = BatchSpec(size=600, seed=2026, surface=Surface.SUBSCRIPTIONS, window_hours=48)
-BASE = datetime(2026, 8, 18, 10, 0, tzinfo=IST).astimezone(timezone.utc)
+BASE = datetime(2026, 8, 18, 10, 0, tzinfo=IST).astimezone(UTC)
 
 
 @pytest.fixture(scope="module")

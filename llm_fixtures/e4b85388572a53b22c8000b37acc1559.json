@@ -1,0 +1,14 @@
+{
+  "cost_usd": 0.0,
+  "input_tokens": 736,
+  "model": "gemini-3.6-flash",
+  "output_tokens": 49,
+  "payload": {
+    "cause": "authentication_dropoff",
+    "confidence": 0.95,
+    "key_evidence": [
+      "The session ended before verification finished."
+    ],
+    "rationale": "The failure occurred because the payment session ended before the verification process was completed by the user."
+  }
+}

@@ -1,0 +1,86 @@
+name: ci
+
+# Three things are checked on every push, in the order that they matter.
+#
+# 1. No secret ever reaches this repository. It is public, and a leaked key is
+#    the one failure that cannot be fixed by a later commit.
+# 2. The tests pass, including the ones asserting results that are unflattering.
+# 3. The published figures reproduce from the published code. A README full of
+#    rupee amounts that nobody can regenerate is a blog post, not evidence.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history: the secret scan below walks every blob ever committed,
+          # not just the tip. A key removed in a later commit is still a leaked
+          # key, and a shallow clone would report the repository clean.
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install
+        run: pip install -r backend/requirements.txt
+
+      - name: Scan every blob in history for secrets
+        run: python tools/scan_secrets.py --history
+
+      - name: Tests
+        run: python -m pytest backend/tests -q
+
+      - name: The published figures still reproduce
+        # Runs the headline batch and fails if it errors. The generator
+        # fingerprint test in the suite above is what catches the figures
+        # silently moving; this catches the reporting path breaking.
+        run: |
+          python tools/run_eval.py --size 500 --quick
+          python tools/run_eval.py --size 300 --surface subscriptions --quick
+          python tools/run_eval.py --size 300 --surface receivables --quick
+
+      - name: The audit chain verifies
+        run: |
+          python tools/run_eval.py --size 200 --audit --quick | tee /tmp/audit.txt
+          grep -q "chain verification: INTACT" /tmp/audit.txt
+
+      - name: The shipped example config is loadable
+        # .env.example is the first file anyone copies. It has been broken once.
+        run: |
+          python -c "
+          import sys; sys.path.insert(0, 'backend')
+          from counterfoil.config import load_dotenv, load_settings
+          import os
+          os.environ['RAZORPAY_KEY_ID'] = 'rzp_test_FAKEKEYFORTESTS'
+          load_dotenv('.env.example', override=True)
+          os.environ['RAZORPAY_KEY_ID'] = 'rzp_test_FAKEKEYFORTESTS'
+          s = load_settings()
+          assert s.llm_mode == 'replay', s.llm_mode
+          assert s.dry_run is True
+          print('config ok:', s.llm_provider, s.llm_model, s.llm_mode)
+          "
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install ruff==0.8.4
+      # Lint only, not formatting. The behaviour tables in profiles.py and the
+      # playbooks in propose.py are laid out in aligned columns because they are
+      # read as tables; the formatter collapses that. Lint catches what rots.
+      - run: ruff check backend tools

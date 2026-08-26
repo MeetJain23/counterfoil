@@ -1,0 +1,14 @@
+{
+  "cost_usd": 0.0,
+  "input_tokens": 746,
+  "model": "gemini-3.6-flash",
+  "output_tokens": 68,
+  "payload": {
+    "cause": "issuer_decline_soft",
+    "confidence": 0.85,
+    "key_evidence": [
+      "Transaction could not be completed. Please check with your bank and try again."
+    ],
+    "rationale": "The failure message advises checking with the bank and trying again, which is typical of a non-permanent soft decline by the issuing authority."
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "cost_usd": 0.0,
+  "input_tokens": 742,
+  "model": "gemini-3.6-flash",
+  "output_tokens": 61,
+  "payload": {
+    "cause": "issuer_decline_hard",
+    "confidence": 0.9,
+    "key_evidence": [
+      "The standing instruction is no longer active at the bank."
+    ],
+    "rationale": "The error description explicitly states that the standing instruction is no longer active at the bank, indicating a permanent decline for this mandate."
+  }
+}

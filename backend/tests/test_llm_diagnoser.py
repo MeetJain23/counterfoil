@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -38,7 +38,7 @@ def event(description="Unable to reach the issuing bank at this time.", **over):
         event_id="evt_1",
         surface=Surface.PAYMENTS,
         kind=RiskKind.PAYMENT_FAILED,
-        occurred_at=datetime(2026, 8, 3, 12, tzinfo=timezone.utc),
+        occurred_at=datetime(2026, 8, 3, 12, tzinfo=UTC),
         amount=Money.rupees(2499),
         customer=Customer("cus_88", phone_last4="4412", email_domain="gmail.com"),
         provider_signals=signals,
@@ -167,7 +167,7 @@ def test_amount_and_attempt_count_do_not_split_the_cache():
         event_id="evt_2",
         surface=Surface.PAYMENTS,
         kind=RiskKind.PAYMENT_FAILED,
-        occurred_at=datetime(2026, 8, 4, 3, tzinfo=timezone.utc),
+        occurred_at=datetime(2026, 8, 4, 3, tzinfo=UTC),
         amount=Money.rupees(84000),
         customer=Customer("cus_99"),
         provider_signals=dict(small.provider_signals),

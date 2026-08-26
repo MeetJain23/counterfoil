@@ -14,6 +14,7 @@ clever, it is broken.
 
 from __future__ import annotations
 
+import contextlib
 from dataclasses import dataclass
 from datetime import timedelta
 
@@ -228,10 +229,10 @@ def next_proposal(
     if step.from_promise:
         promised = diagnosis.evidence.get("promised_within_days")
         if promised is not None:
-            try:
+            # A malformed promise falls back to scheduling from the failure
+            # date. The model is not trusted to have produced a number.
+            with contextlib.suppress(TypeError, ValueError):
                 anchor = anchor + timedelta(days=int(promised))
-            except (TypeError, ValueError):
-                pass
 
     return Proposal(
         intervention=step.intervention,

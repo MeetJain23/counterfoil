@@ -14,7 +14,7 @@ Design constraints:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -415,7 +415,7 @@ class PolicyEngine:
             target += timedelta(days=1)
         return Proposal(
             proposal.intervention,
-            scheduled_for=target.astimezone(timezone.utc),
+            scheduled_for=target.astimezone(UTC),
             channel=proposal.channel,
             message_hint=proposal.message_hint,
             params={**proposal.params, "deferred_for": "quiet_hours"},
