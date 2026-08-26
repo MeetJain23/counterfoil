@@ -1,0 +1,15 @@
+{
+  "cost_usd": 0.0,
+  "input_tokens": 687,
+  "model": "gemini-3.1-flash-lite",
+  "output_tokens": 99,
+  "payload": {
+    "cause": "invoice_cashflow_delay",
+    "confidence": 0.95,
+    "key_evidence": [
+      "We are a little tight this month. Can we push this to the first week of next month?"
+    ],
+    "promised_within_days": null,
+    "rationale": "The customer explicitly mentions being tight on cash and requests to delay payment without providing a specific date or commitment."
+  }
+}

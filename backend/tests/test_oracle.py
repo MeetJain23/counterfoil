@@ -145,3 +145,50 @@ def test_the_oracle_is_an_evaluation_instrument_not_a_product_component():
             elif isinstance(node, ast.ImportFrom):
                 names = [node.module or ""] + [a.name for a in node.names]
             assert not any("oracle" in n.lower() for n in names), path
+
+
+# --------------------------------------------------------------------- #
+# the ceiling has to actually be a ceiling (see FAILURES.md 009)        #
+# --------------------------------------------------------------------- #
+
+
+def test_perfect_diagnosis_knows_the_date_as_well_as_the_cause():
+    """On receivables, perfect diagnosis of a promise includes knowing when.
+
+    The first oracle returned only the cause, so the playbook fell back to
+    chasing from the failure date while the real model read "three working
+    days" out of the buyer's reply and waited. The model beat the oracle,
+    which meant the oracle was not one.
+    """
+    from counterfoil.domain.events import Surface
+
+    cases = generate(BatchSpec(size=200, seed=2026, surface=Surface.RECEIVABLES))
+    oracle = OracleDiagnoser.from_cases(cases)
+    promises = [c for c in cases if c.true_cause is RootCause.PROMISE_TO_PAY]
+    assert promises
+
+    for case in promises:
+        evidence = oracle(case.event).evidence
+        assert "promised_within_days" in evidence
+        # It matches the date the world will actually pay on.
+        assert abs(int(evidence["promised_within_days"]) - case.ripens_after_hours / 24) <= 1
+
+
+@pytest.mark.parametrize(
+    "surface", ["payments", "subscriptions", "receivables"]
+)
+def test_the_model_never_beats_perfect_diagnosis(surface, model_diagnoser):
+    """The invariant the whole contribution metric rests on.
+
+    If this fails, the oracle is missing something the model has rather than
+    the model being superhuman, and the percentage it feeds is meaningless.
+    """
+    from counterfoil.domain.events import Surface
+
+    spec = BatchSpec(size=400, seed=2026, surface=Surface(surface))
+    c = measure_contribution(spec, diagnoser=model_diagnoser)
+    assert c.with_model_paise <= c.oracle_paise, (
+        f"on {surface} the model returned more than perfect diagnosis, so the "
+        "oracle is incomplete"
+    )
+    assert c.gap_closed <= 1.0

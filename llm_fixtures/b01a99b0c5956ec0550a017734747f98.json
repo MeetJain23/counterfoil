@@ -1,0 +1,15 @@
+{
+  "cost_usd": 0.0,
+  "input_tokens": 686,
+  "model": "gemini-3.1-flash-lite",
+  "output_tokens": 97,
+  "payload": {
+    "cause": "invoice_disputed",
+    "confidence": 1.0,
+    "key_evidence": [
+      "This does not match the rate agreed in the contract. We are holding payment until it is amended."
+    ],
+    "promised_within_days": null,
+    "rationale": "The customer explicitly states that the invoice rate does not match the contract and refuses to pay until it is amended."
+  }
+}

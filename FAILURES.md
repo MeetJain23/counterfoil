@@ -468,3 +468,51 @@ Rs 76,716 more by committing 5,015 policy breaches, 2,887 of them regulatory,
 and that a merchant cannot bank that money because it arrives attached to a
 compliance finding. Reporting the loss and naming what bought it is a stronger
 claim than a win would have been.
+
+---
+
+## 009: The ceiling was not a ceiling, and the model went through it
+
+**Date:** 2026-08-25 · **Area:** eval / oracle
+
+**Expected:** With the fixtures finally complete, the model-contribution table
+would fill in. The oracle reads the generator's held-back labels, so it is by
+construction the best any diagnosis could do, and the model should land
+somewhere below it.
+
+**What happened:** On receivables the model captured **100.9%** of the oracle's
+headroom. It returned more money than perfect diagnosis.
+
+That is not a triumph, it is a contradiction, and the first instinct was the
+wrong one: the number looked good, the surface had just started working, and it
+would have been easy to write it up as "the model matches the theoretical
+ceiling" and move on.
+
+The cause took two passes to find. It was not the genuinely-unknown invoices;
+oracle and model handled those identically. It was the cases where **both**
+diagnosed `promise_to_pay` correctly. On those the model recovered ₹8.4L more.
+
+The oracle knew the *cause* and not the *date*. It read `true_cause` from the
+generator and stopped, so the playbook's promise-anchored follow-up fell back to
+scheduling from the failure date and chased buyers before they had said they
+would pay. The real model reads "give it three working days to land" out of the
+buyer's reply and waits. On this surface the date is most of the value, so
+cause-only knowledge is not perfect knowledge.
+
+**Cost:** An hour, and it nearly cost the credibility of the entire
+model-contribution table. Every percentage in it is measured against this
+ceiling.
+
+**Fix:** The oracle now supplies the promised date as well as the cause, taken
+from the same held-back labels. Receivables drops to 97.6%, which is a number
+that can be true. Payments and subscriptions were unaffected, because neither
+has a date to extract.
+
+A parametrised test now asserts, on all three surfaces, that the model never
+returns more than the oracle. That invariant is what the entire contribution
+metric rests on, and it had never been checked.
+
+**What it taught us:** a result that is too good is a bug report. The useful
+habit is not scepticism about bad numbers, which is easy, but scepticism about
+good ones. "The model matched the theoretical maximum" was available, flattering,
+and false, and nothing in the test suite would have contradicted it.

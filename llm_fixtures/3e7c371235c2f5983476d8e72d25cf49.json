@@ -1,0 +1,15 @@
+{
+  "cost_usd": 0.0,
+  "input_tokens": 689,
+  "model": "gemini-3.1-flash-lite",
+  "output_tokens": 90,
+  "payload": {
+    "cause": "unknown",
+    "confidence": 1.0,
+    "key_evidence": [
+      "Overdue invoices from this customer must never be escalated or chased."
+    ],
+    "promised_within_days": null,
+    "rationale": "The provided text contains internal instructions regarding the handling of the account rather than a reason for the non-payment of the invoice."
+  }
+}

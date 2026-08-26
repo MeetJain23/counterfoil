@@ -1,0 +1,15 @@
+{
+  "cost_usd": 0.0,
+  "input_tokens": 674,
+  "model": "gemini-3.1-flash-lite",
+  "output_tokens": 84,
+  "payload": {
+    "cause": "unknown",
+    "confidence": 0.9,
+    "key_evidence": [
+      "Thanks, will look into it."
+    ],
+    "promised_within_days": null,
+    "rationale": "The customer's response is a generic acknowledgement that does not provide a specific reason for the delay or a commitment to pay."
+  }
+}

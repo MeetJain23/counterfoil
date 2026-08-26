@@ -1,0 +1,15 @@
+{
+  "cost_usd": 0.0,
+  "input_tokens": 680,
+  "model": "gemini-3.1-flash-lite",
+  "output_tokens": 95,
+  "payload": {
+    "cause": "promise_to_pay",
+    "confidence": 1.0,
+    "key_evidence": [
+      "Payment has been scheduled for the 15th of this month."
+    ],
+    "promised_within_days": 15,
+    "rationale": "The customer explicitly stated that the payment has been scheduled for a specific date, which constitutes a clear promise to pay."
+  }
+}

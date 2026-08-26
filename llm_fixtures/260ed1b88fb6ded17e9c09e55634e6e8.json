@@ -1,0 +1,15 @@
+{
+  "cost_usd": 0.0,
+  "input_tokens": 691,
+  "model": "gemini-3.1-flash-lite",
+  "output_tokens": 103,
+  "payload": {
+    "cause": "promise_to_pay",
+    "confidence": 1,
+    "key_evidence": [
+      "we have queued this and it should reach you by the 20th at the latest"
+    ],
+    "promised_within_days": 13,
+    "rationale": "The customer explicitly states that the payment is queued and provides a specific deadline of the 20th for the funds to reach the processor."
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "cost_usd": 0.0,
+  "input_tokens": 683,
+  "model": "gemini-3.1-flash-lite",
+  "output_tokens": 83,
+  "payload": {
+    "cause": "invoice_disputed",
+    "confidence": 1,
+    "key_evidence": [
+      "The delivery in question was never completed."
+    ],
+    "promised_within_days": null,
+    "rationale": "The customer explicitly states that the delivery was never completed, which constitutes a dispute regarding the validity of the invoice."
+  }
+}

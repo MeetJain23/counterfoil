@@ -1,0 +1,15 @@
+{
+  "cost_usd": 0.0,
+  "input_tokens": 682,
+  "model": "gemini-3.1-flash-lite",
+  "output_tokens": 102,
+  "payload": {
+    "cause": "invoice_cashflow_delay",
+    "confidence": 0.95,
+    "key_evidence": [
+      "Would you consider splitting this across two months? We can commit to half now."
+    ],
+    "promised_within_days": null,
+    "rationale": "The customer is requesting to split the payment across two months due to current cashflow constraints, which fits the definition of a cashflow delay."
+  }
+}

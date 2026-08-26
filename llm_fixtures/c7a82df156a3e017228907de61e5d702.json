@@ -1,0 +1,15 @@
+{
+  "cost_usd": 0.0,
+  "input_tokens": 670,
+  "model": "gemini-3.1-flash-lite",
+  "output_tokens": 90,
+  "payload": {
+    "cause": "unknown",
+    "confidence": 0.9,
+    "key_evidence": [
+      "Noted."
+    ],
+    "promised_within_days": null,
+    "rationale": "The term 'Noted' is a generic acknowledgment that does not provide any information regarding the status of the payment, the reason for the delay, or an intent to pay."
+  }
+}

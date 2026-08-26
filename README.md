@@ -36,18 +36,17 @@ reproducible with one command.
 
 | surface | at risk | agent net | naive net | agent breaches | naive breaches |
 |---|---|---|---|---|---|
-| payments | ₹17.9L | **₹8,56,102** | ₹6,23,439 | **0** | 2,976 |
-| subscriptions | ₹8.1L | ₹3,82,630 | **₹4,96,466** | **0** | 5,015 |
-| receivables | ₹18.4cr | ₹32,13,238 | **₹1,83,25,297** | **0** | 11,606 |
+| payments | ₹17.9L | **₹8,65,934** | ₹6,23,440 | **0** | 2,976 |
+| subscriptions | ₹8.1L | ₹3,87,269 | **₹4,96,466** | **0** | 5,015 |
+| receivables | ₹18.4cr | **₹2,81,05,781** | ₹1,83,25,297 | **0** | 11,606 |
 
-**Counterfoil loses on two of three surfaces, and that is the most interesting
-thing in this repository.**
+**Counterfoil still loses on subscriptions, and that is the most interesting row
+in the table.**
 
-On subscriptions the ungoverned arm recovers ₹95,568 more. It buys that by
-presenting mandate debits without a pre-debit notice 2,887 times, which is a
-regulatory breach and not revenue a merchant can bank. On receivables it looks
-far worse, and the reason is stated plainly below: the model layer that surface
-depends on is not yet wired to real recordings.
+The ungoverned arm recovers ₹1,09,197 more there. It buys that by presenting
+mandate debits without a pre-debit notice 2,887 times, which is a regulatory
+breach rather than revenue a merchant can bank. The clause stays and the loss is
+reported: see [ADR-006](docs/decisions/ADR-006-compliance-is-not-a-tunable.md).
 
 Where the numbers are unflattering they are reported unflattering. The full
 account of each is in [FAILURES.md](FAILURES.md).
@@ -107,11 +106,11 @@ The payments win holds across six seeds, ₹33,056 to ₹1,25,681.
 The question is not whether a model is present. It is what it is worth, and the
 answer differs by an order of magnitude across surfaces.
 
-| surface | rules resolve | what the model is for |
-|---|---|---|
-| payments | 83.2% | the 17% where the provider returned prose instead of a code |
-| subscriptions | 88.2% | same, narrower |
-| receivables | **0%** | everything: the signal is an email thread |
+| surface | rules resolve | model touches | what the model is for |
+|---|---|---|---|
+| payments | 83.2% | 16.8% | the cases where the provider returned prose, not a code |
+| subscriptions | 88.2% | 11.8% | same, narrower |
+| receivables | **0%** | **81.7%** | everything: the signal is an email thread |
 
 A failed card arrives with a machine-readable reason code, so a lookup table
 closes most of that surface for free and paying a model to rediscover that a
@@ -127,22 +126,25 @@ what perfect diagnosis would achieve:
 
 | surface | rules only | rules + model | perfect diagnosis | captured |
 |---|---|---|---|---|
-| payments | ₹7,67,100 | ₹8,66,520 | ₹9,07,612 | **70.8%** |
-| subscriptions | ₹4,08,180 | ₹4,08,180 | ₹4,41,116 | 0% |
-| receivables | ₹32,77,238 | ₹32,77,238 | ₹2,79,39,324 | 0% |
+| payments | ₹7,67,100 | ₹8,73,218 | ₹9,07,612 | **75.5%** |
+| subscriptions | ₹4,08,180 | ₹4,11,270 | ₹4,41,116 | 9.4% |
+| receivables | ₹32,77,238 | **₹2,81,69,969** | ₹2,87,80,946 | **97.6%** |
 
-**The two zeroes are honest, not broken.** Recorded model answers exist for the
-payments surface only. Subscription and receivables fixtures are still being
-recorded against a free-tier daily quota, so on those surfaces every ambiguous
-case currently degrades to human escalation, which is the correct behaviour and
-not a useful one. Until they exist, the receivables oracle figure is what better
-diagnosis *could* be worth there, not what this model *has* delivered.
+Read the last row against the first. On payments the model adds ₹1,06,118 to a
+rule table that was already doing most of the work. On receivables it is the
+difference between ₹32L and ₹2.8cr, because without it the agent cannot tell
+which invoices deserve one of its 80 human reviews and spends them on whatever
+it saw first.
 
-That gap is the honest headline for receivables. With human review budgeted at
-8 reviews per 100 invoices, an agent with no diagnosis spends that budget on
-whatever it saw first; an agent with perfect diagnosis spends the same 48
-reviews on the cases that need them and nets roughly eighteen times more. The
-whole difference is knowing which forty-eight.
+That is the answer to "where did the model earn its place". Not everywhere, and
+by two orders of magnitude more in one place than in another.
+
+**A note on the ceiling.** The oracle is a real upper bound, and it took a bug to
+make it one. The first version knew each invoice's cause but not the payment date
+the buyer had stated, so the model beat it, which meant it was not a ceiling at
+all. A test now asserts on every surface that the model never returns more than
+perfect diagnosis. [FAILURES.md 009](FAILURES.md) has the account; the short
+version is that a result which is too good is a bug report.
 
 **Diagnosis accuracy on the ambiguous payments cases is 88.6%,** and the error
 analysis matters more than the number: every one of the 92 errors is the same
@@ -301,6 +303,12 @@ the system measures its own effect correctly, including when the answer is
 unflattering. Recorded model answers are committed to
 [`llm_fixtures/`](llm_fixtures/), so anyone can clone this and reproduce the
 numbers with no API key and no spend.
+
+The corpus is 85 distinct questions recorded across two models, 54 on
+`gemini-3.6-flash` and 31 on `gemini-3.1-flash-lite`. The free tier caps a single
+model at twenty requests per day, so one model would have meant several days of
+waiting. Each fixture records which model produced it, and
+`run_eval --model-contribution` prints the split.
 
 The live Razorpay sandbox lane is not yet wired. When it is, it will be a
 separate, smaller set of cases, reported separately, and it will not be blended

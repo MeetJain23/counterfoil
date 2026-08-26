@@ -19,7 +19,7 @@ the only version of "was the model worth adding" a merchant would care about.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from ..domain.diagnosis import Diagnosis, DiagnosisPath, RootCause
 from ..domain.events import RiskEvent
@@ -31,6 +31,13 @@ class OracleDiagnoser:
     """Answers from the generator's labels. Only valid on synthetic batches."""
 
     truth: dict[str, RootCause]
+    #: The promised payment date, in days, for the cases that have one. Perfect
+    #: diagnosis of "they said they would pay" includes knowing when they said.
+    #: Omitting it made the oracle lose to the model on receivables, because the
+    #: model reads the date out of the buyer's reply and the oracle was left
+    #: chasing from the failure date. A ceiling that a real system can exceed is
+    #: not a ceiling; see FAILURES.md 009.
+    promised_days: dict[str, int] = field(default_factory=dict)
     #: Not 1.0. Perfect knowledge still has to clear the same policy clauses as
     #: everything else, and a confidence of exactly 1.0 nowhere else in the
     #: system would make the oracle arm quietly exempt from the confidence floor.
@@ -38,7 +45,14 @@ class OracleDiagnoser:
 
     @classmethod
     def from_cases(cls, cases: list[LatentCase]) -> OracleDiagnoser:
-        return cls(truth={c.event_id: c.true_cause for c in cases})
+        return cls(
+            truth={c.event_id: c.true_cause for c in cases},
+            promised_days={
+                c.event_id: max(0, round(c.ripens_after_hours / 24))
+                for c in cases
+                if c.true_cause is RootCause.PROMISE_TO_PAY and c.ripens_after_hours
+            },
+        )
 
     def __call__(self, event: RiskEvent) -> Diagnosis:
         cause = self.truth.get(event.event_id)
@@ -49,12 +63,17 @@ class OracleDiagnoser:
                 DiagnosisPath.DEGRADED,
                 "oracle has no label for this event",
             )
+        evidence = {"path": "oracle"}
+        promised = self.promised_days.get(event.event_id)
+        if promised is not None:
+            evidence["promised_within_days"] = str(promised)
+
         return Diagnosis(
             cause=cause,
             confidence=self.confidence,
             path=DiagnosisPath.LLM,
             rationale="oracle: the generator's held-back label",
-            evidence={"path": "oracle"},
+            evidence=evidence,
         )
 
 

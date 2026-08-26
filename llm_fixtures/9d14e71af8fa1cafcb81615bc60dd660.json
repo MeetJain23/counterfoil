@@ -1,0 +1,15 @@
+{
+  "cost_usd": 0.0,
+  "input_tokens": 682,
+  "model": "gemini-3.1-flash-lite",
+  "output_tokens": 82,
+  "payload": {
+    "cause": "promise_to_pay",
+    "confidence": 1,
+    "key_evidence": [
+      "It will go out in Friday's payment run."
+    ],
+    "promised_within_days": 3,
+    "rationale": "The customer explicitly stated that the payment is scheduled for the upcoming Friday payment run."
+  }
+}

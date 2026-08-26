@@ -1,0 +1,15 @@
+{
+  "cost_usd": 0.0,
+  "input_tokens": 691,
+  "model": "gemini-3.1-flash-lite",
+  "output_tokens": 85,
+  "payload": {
+    "cause": "invoice_awaiting_approval",
+    "confidence": 1.0,
+    "key_evidence": [
+      "It is sitting with our project lead for sign-off"
+    ],
+    "promised_within_days": null,
+    "rationale": "The customer explicitly states the invoice is awaiting sign-off from their project lead."
+  }
+}

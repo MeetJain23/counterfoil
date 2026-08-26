@@ -1,0 +1,15 @@
+{
+  "cost_usd": 0.0,
+  "input_tokens": 681,
+  "model": "gemini-3.1-flash-lite",
+  "output_tokens": 94,
+  "payload": {
+    "cause": "promise_to_pay",
+    "confidence": 1,
+    "key_evidence": [
+      "This has been released for payment. Give it three working days to land."
+    ],
+    "promised_within_days": 3,
+    "rationale": "The customer explicitly states the payment has been released and provides a specific timeframe of three working days for the funds to arrive."
+  }
+}

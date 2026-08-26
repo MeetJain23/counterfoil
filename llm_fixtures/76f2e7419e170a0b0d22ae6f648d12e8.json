@@ -1,0 +1,13 @@
+{
+  "cost_usd": 0.0,
+  "input_tokens": 668,
+  "model": "gemini-3.1-flash-lite",
+  "output_tokens": 66,
+  "payload": {
+    "cause": "unknown",
+    "confidence": 1.0,
+    "key_evidence": [],
+    "promised_within_days": null,
+    "rationale": "There is no text or communication provided in the payload to explain the reason for the non-payment."
+  }
+}

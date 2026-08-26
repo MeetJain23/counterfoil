@@ -1,0 +1,14 @@
+{
+  "cost_usd": 0.0,
+  "input_tokens": 743,
+  "model": "gemini-3.1-flash-lite",
+  "output_tokens": 88,
+  "payload": {
+    "cause": "bank_downtime",
+    "confidence": 0.95,
+    "key_evidence": [
+      "The sponsor bank did not respond to the debit presentation."
+    ],
+    "rationale": "The error description explicitly states that the sponsor bank failed to respond to the debit presentation, which indicates an issue with the bank's availability or connectivity."
+  }
+}

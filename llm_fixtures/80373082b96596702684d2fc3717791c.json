@@ -1,0 +1,15 @@
+{
+  "cost_usd": 0.0,
+  "input_tokens": 699,
+  "model": "gemini-3.1-flash-lite",
+  "output_tokens": 119,
+  "payload": {
+    "cause": "invoice_awaiting_approval",
+    "confidence": 0.95,
+    "key_evidence": [
+      "We cannot process this without a PO number against it. Please re-issue with PO-44712 referenced and it will go into the next run."
+    ],
+    "promised_within_days": null,
+    "rationale": "The customer explicitly states that the invoice cannot be processed without a specific purchase order number and indicates it will be handled once that requirement is met."
+  }
+}

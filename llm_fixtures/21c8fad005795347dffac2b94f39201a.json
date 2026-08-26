@@ -1,0 +1,15 @@
+{
+  "cost_usd": 0.0,
+  "input_tokens": 686,
+  "model": "gemini-3.1-flash-lite",
+  "output_tokens": 90,
+  "payload": {
+    "cause": "invoice_disputed",
+    "confidence": 1.0,
+    "key_evidence": [
+      "We were billed for twelve licences and only eight were ever provisioned. Please issue a corrected invoice."
+    ],
+    "promised_within_days": null,
+    "rationale": "The customer explicitly contests the quantity of licenses billed and requests a corrected invoice."
+  }
+}

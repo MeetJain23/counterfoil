@@ -1,0 +1,15 @@
+{
+  "cost_usd": 0.0,
+  "input_tokens": 687,
+  "model": "gemini-3.1-flash-lite",
+  "output_tokens": 102,
+  "payload": {
+    "cause": "invoice_disputed",
+    "confidence": 1.0,
+    "key_evidence": [
+      "There is a duplicate here. You have invoiced the same milestone in March and again in April."
+    ],
+    "promised_within_days": null,
+    "rationale": "The customer explicitly states that the invoice is a duplicate of a previously billed milestone, which constitutes a dispute regarding the validity of the charge."
+  }
+}

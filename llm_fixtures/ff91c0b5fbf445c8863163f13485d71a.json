@@ -1,0 +1,15 @@
+{
+  "cost_usd": 0.0,
+  "input_tokens": 690,
+  "model": "gemini-3.1-flash-lite",
+  "output_tokens": 104,
+  "payload": {
+    "cause": "invoice_cashflow_delay",
+    "confidence": 1.0,
+    "key_evidence": [
+      "We are not disputing it at all, we simply do not have it right now. Please bear with us."
+    ],
+    "promised_within_days": null,
+    "rationale": "The customer explicitly acknowledges the debt but states they currently lack the funds to pay, without providing a specific date for payment."
+  }
+}

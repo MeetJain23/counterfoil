@@ -1,0 +1,15 @@
+{
+  "cost_usd": 0.0,
+  "input_tokens": 687,
+  "model": "gemini-3.1-flash-lite",
+  "output_tokens": 92,
+  "payload": {
+    "cause": "invoice_awaiting_approval",
+    "confidence": 1.0,
+    "key_evidence": [
+      "Our procurement team needs the signed SOW attached before they will approve payment."
+    ],
+    "promised_within_days": null,
+    "rationale": "The customer explicitly states that their procurement team requires a signed SOW before they can approve the payment."
+  }
+}

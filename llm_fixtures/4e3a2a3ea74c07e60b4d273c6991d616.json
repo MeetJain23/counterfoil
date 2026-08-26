@@ -1,0 +1,15 @@
+{
+  "cost_usd": 0.0,
+  "input_tokens": 691,
+  "model": "gemini-3.1-flash-lite",
+  "output_tokens": 109,
+  "payload": {
+    "cause": "invoice_cashflow_delay",
+    "confidence": 1.0,
+    "key_evidence": [
+      "Our own receivables have slipped and we are managing cash carefully. We will clear this as soon as our client settles with us."
+    ],
+    "promised_within_days": null,
+    "rationale": "The customer explicitly states they are managing cash flow carefully and are waiting for their own client to pay them before they can settle the invoice."
+  }
+}

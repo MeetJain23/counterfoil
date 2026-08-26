@@ -1,0 +1,15 @@
+{
+  "cost_usd": 0.0,
+  "input_tokens": 694,
+  "model": "gemini-3.1-flash-lite",
+  "output_tokens": 104,
+  "payload": {
+    "cause": "promise_to_pay",
+    "confidence": 0.95,
+    "key_evidence": [
+      "Finance closes the batch on the 25th of each month so it should clear in that one."
+    ],
+    "promised_within_days": 25,
+    "rationale": "The customer explicitly states the payment is in the queue and provides a specific monthly payment cycle date for when it will clear."
+  }
+}
