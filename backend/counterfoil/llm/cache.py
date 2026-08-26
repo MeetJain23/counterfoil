@@ -111,6 +111,24 @@ class FixtureStore:
         total = self.hits + self.misses
         return self.hits / total if total else 0.0
 
+    def provenance(self) -> dict[str, int]:
+        """Which model produced each recorded answer.
+
+        The free tier caps a single model at twenty requests a day, so a corpus
+        of any size is recorded across more than one. That is a fact about the
+        evidence and belongs in front of a reader rather than inside the files.
+        """
+        counts: dict[str, int] = {}
+        if not self.root.is_dir():
+            return counts
+        for path in self.root.glob("*.json"):
+            try:
+                model = json.loads(path.read_text(encoding="utf-8")).get("model", "unknown")
+            except (json.JSONDecodeError, OSError):
+                model = "unreadable"
+            counts[model] = counts.get(model, 0) + 1
+        return dict(sorted(counts.items(), key=lambda kv: -kv[1]))
+
     def stats(self) -> str:
         return (
             f"fixtures[{self.mode}] {self.hits} hits, {self.misses} misses "

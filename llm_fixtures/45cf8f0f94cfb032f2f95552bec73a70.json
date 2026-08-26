@@ -1,0 +1,15 @@
+{
+  "cost_usd": 0.0,
+  "input_tokens": 742,
+  "model": "gemini-3.1-flash-lite",
+  "output_tokens": 99,
+  "payload": {
+    "cause": "technical_gateway",
+    "confidence": 0.6,
+    "key_evidence": [
+      "error_code: BAD_REQUEST_ERROR",
+      "error_source: gateway"
+    ],
+    "rationale": "The error source is explicitly identified as the gateway and the error code indicates a bad request, suggesting a technical issue at the processor level rather than a bank or customer-related decline."
+  }
+}

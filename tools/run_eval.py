@@ -156,6 +156,14 @@ def model_contribution(spec: BatchSpec) -> None:
     print()
     print(store.stats())
 
+    provenance = store.provenance()
+    if len(provenance) > 1:
+        print()
+        print("recorded across more than one model, because the free tier caps a")
+        print("single model at twenty requests a day:")
+        for model, n in provenance.items():
+            print(f"    {n:4d}  {model}")
+
 
 def _escalations(arm) -> int:
     from counterfoil.domain.decision import Intervention

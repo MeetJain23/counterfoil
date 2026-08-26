@@ -1,0 +1,14 @@
+{
+  "cost_usd": 0.0,
+  "input_tokens": 742,
+  "model": "gemini-3.1-flash-lite",
+  "output_tokens": 90,
+  "payload": {
+    "cause": "issuer_decline_soft",
+    "confidence": 0.6,
+    "key_evidence": [
+      "Auto debit presentation was rejected on the due date."
+    ],
+    "rationale": "The error description indicates a rejection of the auto-debit presentation without specifying a permanent block or insufficient funds, which typically points to a soft decline by the issuer."
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "cost_usd": 0.0,
+  "input_tokens": 743,
+  "model": "gemini-3.1-flash-lite",
+  "output_tokens": 87,
+  "payload": {
+    "cause": "issuer_decline_soft",
+    "confidence": 0.85,
+    "key_evidence": [
+      "The transaction was refused; the issuer did not supply a reason code."
+    ],
+    "rationale": "The gateway explicitly states the transaction was refused by the issuer without providing a specific reason, which is characteristic of a soft decline."
+  }
+}

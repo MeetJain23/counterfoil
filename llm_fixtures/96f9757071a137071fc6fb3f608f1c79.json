@@ -1,0 +1,14 @@
+{
+  "cost_usd": 0.0,
+  "input_tokens": 742,
+  "model": "gemini-3.1-flash-lite",
+  "output_tokens": 80,
+  "payload": {
+    "cause": "issuer_decline_hard",
+    "confidence": 0.9,
+    "key_evidence": [
+      "This registration cannot be presented for debit any more."
+    ],
+    "rationale": "The error description explicitly states that the registration cannot be presented for debit anymore, indicating a permanent restriction on the mandate."
+  }
+}

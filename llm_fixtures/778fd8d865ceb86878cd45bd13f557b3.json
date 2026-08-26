@@ -1,0 +1,14 @@
+{
+  "cost_usd": 0.0,
+  "input_tokens": 746,
+  "model": "gemini-3.1-flash-lite",
+  "output_tokens": 88,
+  "payload": {
+    "cause": "issuer_decline_soft",
+    "confidence": 0.6,
+    "key_evidence": [
+      "The scheduled debit was returned unpaid by the account holder's bank."
+    ],
+    "rationale": "The gateway reports the bank returned the debit unpaid, which is a standard issuer refusal without specific details indicating a permanent block or insufficient funds."
+  }
+}

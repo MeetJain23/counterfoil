@@ -308,3 +308,23 @@ def test_the_diagnoser_cannot_reach_anything_that_acts():
         and isinstance(n.value.func, ast.Name)
     }
     assert returns <= {"Diagnosis", "fingerprint"}
+
+
+def test_the_fixture_store_reports_which_model_produced_what(tmp_path):
+    """The corpus spans models because the free tier caps one at 20/day.
+
+    That is a property of the evidence, so it is reported rather than left for
+    someone to discover by grepping the fixture files.
+    """
+    from counterfoil.llm import CachedResponse
+
+    store = FixtureStore(tmp_path / "fx", mode="record")
+    store.put("a", CachedResponse(payload={"cause": "bank_downtime"}, model="model-one"))
+    store.put("b", CachedResponse(payload={"cause": "bank_downtime"}, model="model-one"))
+    store.put("c", CachedResponse(payload={"cause": "bank_downtime"}, model="model-two"))
+
+    assert store.provenance() == {"model-one": 2, "model-two": 1}
+
+
+def test_provenance_is_empty_when_nothing_is_recorded(tmp_path):
+    assert FixtureStore(tmp_path / "nope", mode="replay").provenance() == {}
