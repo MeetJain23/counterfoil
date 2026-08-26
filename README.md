@@ -308,6 +308,20 @@ into these figures.
 
 ---
 
+## Why it is built this way
+
+Six decisions the rest of the code is downstream of, in
+[docs/decisions](docs/decisions/). Each records what was traded off, what it
+cost, and what would change the answer.
+
+Several of them look wrong from the outside until you know what the alternative
+did. The policy engine refusing to act on the model's output looks like distrust
+of the model, and is what makes the model safe to use at all. Reporting recovery
+as incremental makes every headline smaller, and is the only version of the
+number that means anything. Modelling human review as a budget looks like an
+artificial constraint, and is what stops "escalate everything" being the optimal
+policy.
+
 ## What broke
 
 [FAILURES.md](FAILURES.md) is kept live rather than reconstructed. Eight entries
