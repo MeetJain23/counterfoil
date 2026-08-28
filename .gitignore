@@ -128,3 +128,7 @@ tmp/
 
 # Personal working file, not part of the submission.
 VIDEO_SCRIPT.md
+
+# Editor and tooling config, not part of the project.
+.claude/
+.vscode/
