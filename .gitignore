@@ -125,3 +125,6 @@ desktop.ini
 scratch/
 tmp/
 .claude/settings.local.json
+
+# Personal working file, not part of the submission.
+VIDEO_SCRIPT.md
