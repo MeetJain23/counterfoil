@@ -310,9 +310,31 @@ model at twenty requests per day, so one model would have meant several days of
 waiting. Each fixture records which model produced it, and
 `run_eval --model-contribution` prints the split.
 
-The live Razorpay sandbox lane is not yet wired. When it is, it will be a
-separate, smaller set of cases, reported separately, and it will not be blended
-into these figures.
+### The live lane
+
+There is a second, much smaller lane that runs against the real Razorpay
+test-mode API, and it is kept deliberately apart. Run it with:
+
+```bash
+python tools/live_lane.py
+```
+
+It authenticates against the real API, reads real objects out of a real sandbox,
+creates real test orders, verifies webhook signatures the way Razorpay actually
+signs them, and normalises a real payment payload into the same `RiskEvent` the
+kernel already understands. Nothing below the adapter needed changing to accept
+real data, which is the point of the surface-adapter shape.
+
+**It does not establish any recovery figure, and it never will.** A failed
+payment needs a customer at a checkout page entering a test card, which is not
+reachable from a script. So the recovery numbers above stay synthetic, this lane
+stays separate, and the two are never added together.
+
+One thing only real payloads can demonstrate: they arrive carrying `email` and
+`contact` populated. The adapter reduces those to a domain and last four digits
+at the boundary, before anything downstream sees them, and a test asserts the
+resulting event is accepted by the PII-refusing ledger. On synthetic data that
+reduction is a precaution. Here it is doing work.
 
 ---
 
