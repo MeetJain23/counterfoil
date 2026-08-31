@@ -35,8 +35,25 @@ def rs(paise: int) -> str:
     return Money(int(paise)).as_rupees_str
 
 
-def headline(spec: BatchSpec, ledger: Ledger | None) -> None:
-    report = run_batch(spec, ledger=ledger)
+def default_diagnoser():
+    """The recorded model answers, which are committed and cost nothing.
+
+    The model layer is part of the product, so the default run has to include
+    it or the published figures cannot be reproduced by the published command.
+    Replaying fixtures needs no API key and no network.
+    """
+    from counterfoil.kernel.diagnose.llm import LLMDiagnoser
+    from counterfoil.llm import Budget, FixtureStore
+
+    return LLMDiagnoser(
+        client=None,
+        fixtures=FixtureStore(Path("llm_fixtures"), mode="replay"),
+        budget=Budget(cap_usd=0.0),
+    )
+
+
+def headline(spec: BatchSpec, ledger: Ledger | None, diagnoser=None) -> None:
+    report = run_batch(spec, ledger=ledger, diagnoser=diagnoser)
 
     print(RULE)
     noun = "mandate charges" if spec.surface is Surface.SUBSCRIPTIONS else "failed payments"
@@ -104,12 +121,12 @@ def headline(spec: BatchSpec, ledger: Ledger | None) -> None:
     for label, key in (
         ("resolved by rules", "rule"),
         ("resolved by model", "llm"),
-        ("withheld, no model wired yet", "degraded"),
+        ("withheld, nothing could resolve it", "degraded"),
     ):
         if paths.get(key):
             print(f"    {paths[key]:5d}  {paths[key] / total:6.1%}  {label}")
-    print(f"    {report.agent.llm_calls} model calls made, "
-          f"{report.agent.llm_calls * 0.0003:.4f} USD estimated")
+    print(f"    {report.agent.llm_calls} live model calls "
+          f"(recorded answers replay for free)")
 
 
 def model_contribution(spec: BatchSpec) -> None:
@@ -210,6 +227,8 @@ def main() -> int:
     parser.add_argument("--seed", type=int, default=2026)
     parser.add_argument("--audit", action="store_true", help="write a verifiable ledger")
     parser.add_argument("--quick", action="store_true", help="skip sensitivity and seeds")
+    parser.add_argument("--no-model", action="store_true",
+                        help="rules only, to see what the model is worth")
     parser.add_argument("--model-contribution", action="store_true",
                         help="compare rules-only against rules plus model")
     parser.add_argument("--surface", default="payments",
@@ -234,7 +253,8 @@ def main() -> int:
             path.unlink()
         ledger = Ledger(path, run_id=f"run_{args.seed}")
 
-    headline(spec, ledger)
+    diagnoser = None if args.no_model else default_diagnoser()
+    headline(spec, ledger, diagnoser)
 
     if ledger:
         print()
