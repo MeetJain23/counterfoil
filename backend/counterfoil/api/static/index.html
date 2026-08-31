@@ -122,7 +122,8 @@
     <span id="surfaces" class="seg"></span>
     <label>batch <input id="size" type="number" value="1000" min="1" max="5000"></label>
     <label>seed <input id="seed" type="number" value="2026"></label>
-    <button id="withModel" class="ghost" title="use recorded model fixtures">model: off</button>
+    <button id="withModel" class="ghost on"
+            title="Toggle the language model layer. On replays committed answers and costs nothing. Off shows what the rule table alone achieves, which is how you see what the model is worth.">model: on</button>
     <button id="run">Run batch</button>
   </div>
 </header>
@@ -255,7 +256,10 @@ const rs = (p) => (p / 100).toLocaleString("en-IN", {minimumFractionDigits: 2, m
 const money = (p) => "₹" + rs(p);
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
-let runId = null, withModel = false, stateFilter = null, surface = "payments";
+// The model layer is part of the product, so it is on by default: a viewer
+// landing here should see the figures the README publishes, not a lesser
+// configuration. Turning it off is the interesting comparison, not the baseline.
+let runId = null, withModel = true, stateFilter = null, surface = "payments";
 
 const SURFACES = [
   ["payments", "payments"],
@@ -327,7 +331,11 @@ function render(s) {
   $("breachSub").textContent = `Counterfoil against the naive agent, same policy, same batch.`;
 
   const total = Object.values(s.diagnosis_paths).reduce((a, b) => a + b, 0) || 1;
-  $("pathNote").innerHTML = s.rules_resolve > 0.5
+  if (!withModel) {
+    $("pathNote").innerHTML =
+      `<b class="warn">Model off.</b> Anything the rule table cannot close is
+       withheld and escalated instead. Turn it on to see the published figures.`;
+  } else $("pathNote").innerHTML = s.rules_resolve > 0.5
     ? `Provider error codes close <b>${(100 * s.rules_resolve).toFixed(1)}%</b> of this
        surface, so the model is a supplement.`
     : `Error codes close <b>${(100 * s.rules_resolve).toFixed(1)}%</b> here. The signal is
