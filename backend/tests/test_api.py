@@ -201,3 +201,42 @@ def test_the_policy_is_served_in_full():
 def test_diagnosis_paths_are_reported(run):
     assert sum(run["diagnosis_paths"].values()) == run["size"]
     assert "rule" in run["diagnosis_paths"]
+
+
+def test_health_reflects_the_dotenv_the_tools_read():
+    """The dashboard must report the same configuration the CLI tools see.
+
+    It did not: the API never called load_dotenv, so it read only real
+    environment variables and the header told every viewer "razorpay not
+    configured" while tools/live_lane.py was talking to the sandbox. A cosmetic
+    bug on any other screen, and a credibility one on the first thing a judge
+    looks at.
+    """
+    from pathlib import Path
+
+    from counterfoil.config import load_dotenv
+
+    root = Path(__file__).resolve().parents[2]
+    load_dotenv(root / ".env")
+
+    from counterfoil.config import load_settings
+
+    expected = "test-mode" if load_settings().has_razorpay else "not configured"
+    assert client.get("/api/health").json()["razorpay"] == expected
+
+
+def test_the_api_module_loads_dotenv_at_import():
+    """Asserted structurally, because the symptom only shows with a .env present
+    and a machine without one would never see the regression."""
+    import ast
+    from pathlib import Path
+
+    from counterfoil.api import main
+
+    tree = ast.parse(Path(main.__file__).read_text(encoding="utf-8"))
+    called = {
+        node.func.id
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+    }
+    assert "load_dotenv" in called

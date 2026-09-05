@@ -13,7 +13,7 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse, JSONResponse
 
-from ..config import load_settings
+from ..config import load_dotenv, load_settings
 from ..domain.events import Surface
 from ..kernel.policy import PolicyEngine
 from . import service
@@ -21,6 +21,14 @@ from .service import MAX_BATCH, RunStore
 
 STATIC = Path(__file__).parent / "static"
 LEDGER_DIR = Path("data/runs")
+
+#: The server is started with --app-dir backend, so the repository root is three
+#: levels up from this module. Resolving it from __file__ rather than the working
+#: directory means the header reports the same configuration the CLI tools see
+#: no matter where uvicorn was launched from. Without this the dashboard read
+#: only real environment variables and told everyone Razorpay was not configured
+#: while tools/live_lane.py was talking to the sandbox quite happily.
+load_dotenv(Path(__file__).resolve().parents[3] / ".env")
 
 app = FastAPI(
     title="Counterfoil",
