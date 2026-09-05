@@ -319,7 +319,7 @@ permits it, and that is worth a guard rather than another patch.
 
 ---
 
-## 006: The model's only mistake was my mistake
+## 008: The model's only mistake was my mistake
 
 **Date:** 2026-08-24 · **Area:** model diagnosis / synthetic data
 
@@ -377,7 +377,7 @@ sentence in a specific file that I had written myself.
 
 ---
 
-## 007: Adding a surface silently rewrote every published payments number
+## 009: Adding a surface silently rewrote every published payments number
 
 **Date:** 2026-08-24 · **Area:** synthetic generator
 
@@ -419,7 +419,7 @@ success cannot.
 
 ---
 
-## 008: Complying with the mandate rules costs Rs 76,716, and we are reporting it
+## 0010: Complying with the mandate rules costs Rs 76,716, and we are reporting it
 
 **Date:** 2026-08-24 · **Area:** subscriptions surface
 
@@ -471,7 +471,7 @@ claim than a win would have been.
 
 ---
 
-## 009: The ceiling was not a ceiling, and the model went through it
+## 0011: The ceiling was not a ceiling, and the model went through it
 
 **Date:** 2026-08-25 · **Area:** eval / oracle
 
