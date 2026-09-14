@@ -132,3 +132,4 @@ VIDEO_SCRIPT.md
 # Editor and tooling config, not part of the project.
 .claude/
 .vscode/
+linkedin_card.html
