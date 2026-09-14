@@ -143,7 +143,7 @@ by two orders of magnitude more in one place than in another.
 make it one. The first version knew each invoice's cause but not the payment date
 the buyer had stated, so the model beat it, which meant it was not a ceiling at
 all. A test now asserts on every surface that the model never returns more than
-perfect diagnosis. [FAILURES.md 009](FAILURES.md) has the account; the short
+perfect diagnosis. [FAILURES.md 011](FAILURES.md) has the account; the short
 version is that a result which is too good is a bug report.
 
 **Diagnosis accuracy on the ambiguous payments cases is 88.6%,** and the error

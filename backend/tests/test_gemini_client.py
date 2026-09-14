@@ -532,7 +532,7 @@ def test_the_quota_hint_reaches_the_error_message():
 
 
 # --------------------------------------------------------------------- #
-# transport failures (see FAILURES.md 006)                              #
+# transport failures (see FAILURES.md 007)                              #
 # --------------------------------------------------------------------- #
 
 

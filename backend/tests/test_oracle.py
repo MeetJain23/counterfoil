@@ -148,7 +148,7 @@ def test_the_oracle_is_an_evaluation_instrument_not_a_product_component():
 
 
 # --------------------------------------------------------------------- #
-# the ceiling has to actually be a ceiling (see FAILURES.md 009)        #
+# the ceiling has to actually be a ceiling (see FAILURES.md 011)        #
 # --------------------------------------------------------------------- #
 
 

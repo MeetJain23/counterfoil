@@ -36,7 +36,7 @@ class OracleDiagnoser:
     #: Omitting it made the oracle lose to the model on receivables, because the
     #: model reads the date out of the buyer's reply and the oracle was left
     #: chasing from the failure date. A ceiling that a real system can exceed is
-    #: not a ceiling; see FAILURES.md 009.
+    #: not a ceiling; see FAILURES.md 011.
     promised_days: dict[str, int] = field(default_factory=dict)
     #: Not 1.0. Perfect knowledge still has to clear the same policy clauses as
     #: everything else, and a confidence of exactly 1.0 nowhere else in the

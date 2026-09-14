@@ -419,7 +419,7 @@ success cannot.
 
 ---
 
-## 0010: Complying with the mandate rules costs Rs 76,716, and we are reporting it
+## 010: Complying with the mandate rules costs Rs 76,716, and we are reporting it
 
 **Date:** 2026-08-24 · **Area:** subscriptions surface
 
@@ -471,7 +471,7 @@ claim than a win would have been.
 
 ---
 
-## 0011: The ceiling was not a ceiling, and the model went through it
+## 011: The ceiling was not a ceiling, and the model went through it
 
 **Date:** 2026-08-25 · **Area:** eval / oracle
 

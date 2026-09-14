@@ -6,7 +6,7 @@ call silently produces a different batch for the same seed and quietly
 invalidates every number in the README, with no test failing and no diff to
 point at.
 
-That happened once, adding the subscriptions surface (FAILURES.md 007). It was
+That happened once, adding the subscriptions surface (FAILURES.md 009). It was
 caught only because two unrelated sensitivity tests happened to assert a
 specific *loss*, and the loss disappeared. Relying on that again is not a plan.
 

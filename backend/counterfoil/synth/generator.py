@@ -190,7 +190,7 @@ def generate(spec: BatchSpec) -> list[LatentCase]:
         # to a seed, so reordering these calls silently produces a different
         # batch for the same seed and quietly invalidates every number in the
         # README. Adding the subscriptions surface did exactly that once
-        # already; see FAILURES.md 007.
+        # already; see FAILURES.md 009.
         amount = Money(
             _weighted_choice(rng, PLAN_PRICES_PAISE)  # type: ignore[arg-type]
             if subscriptions

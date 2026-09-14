@@ -28,7 +28,7 @@ that it is only a demo.
 The clause stays, at 24 hours, and the loss is reported.
 
 Compliance clauses are enforced regardless of what they cost, and the cost is
-published rather than absorbed. `FAILURES.md` 008 carries the number and the
+published rather than absorbed. `FAILURES.md` 010 carries the number and the
 mechanism, the README leads with the loss rather than burying it, and the
 dashboard renders it in the verdict panel where a viewer cannot miss it:
 
